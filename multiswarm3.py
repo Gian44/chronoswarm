@@ -650,12 +650,12 @@ def main(data, max_iterations=500, verbose=True):
                     print("Current particle fitness:", part.fitness.values)
                     """
                     if part.bestfit is None or part.fitness.values[0] <= part.bestfit.values[0]:
-                        part.best = toolbox.clone(part)
+                        part.best = part
                         part.bestfit.values = part.fitness.values
                         print("Updated part bestfit:", part.bestfit.values)
 
                     if part.fitness.values[0] <= swarm.bestfit.values[0]:
-                        swarm.best = toolbox.clone(part)
+                        swarm.best = part
                         swarm.bestfit.values = part.fitness.values
                         swarm.no_improvement_iters = 0
                         print("****************UPDATED SWARM BESTFIT WITH NEW BEST PARTICLE****************")
