@@ -621,7 +621,7 @@ def main(data, max_iterations=500, verbose=True):
                 init_flags[i] = False
                 for j, part in enumerate(swarm):
                     print("Particle "+ str((5*i)+(j+1)) + " (Fitness: "+ str(part.fitness.values[0]) + ")")
-                    if swarm.best is None or part.fitness.values <= swarm.bestfit.values:
+                    if swarm.best is None or part.fitness.values < swarm.bestfit.values:
                         swarm.best = toolbox.clone(part)
                         swarm.bestfit.values = part.fitness.values
                 print(f"Swarm has been reinitialized. Swarm bestfit is now {swarm.bestfit}.")
@@ -649,13 +649,13 @@ def main(data, max_iterations=500, verbose=True):
                     print("Particle bestfit value: ", part.bestfit.values)
                     print("Current particle fitness:", part.fitness.values)
                     """
-                    if part.bestfit is None or part.fitness.values[0] <= part.bestfit.values[0]:
-                        part.best = part
+                    if part.bestfit is None or part.fitness.values[0] < part.bestfit.values[0]:
+                        part.best = toolbox.clone(part)
                         part.bestfit.values = part.fitness.values
                         print("Updated part bestfit:", part.bestfit.values)
 
-                    if part.fitness.values[0] <= swarm.bestfit.values[0]:
-                        swarm.best = part
+                    if part.fitness.values[0] < swarm.bestfit.values[0]:
+                        swarm.best = toolbox.clone(part)
                         swarm.bestfit.values = part.fitness.values
                         swarm.no_improvement_iters = 0
                         print("****************UPDATED SWARM BESTFIT WITH NEW BEST PARTICLE****************")
