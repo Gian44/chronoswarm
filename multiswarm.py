@@ -636,12 +636,12 @@ def main(data, max_iterations=500, verbose=True):
                     print("Particle bestfit value: ", part.bestfit.values)
                     print("Current particle fitness:", part.fitness.values)
                     """
-                    if part.bestfit is None or part.fitness.values[0] < part.bestfit.values[0]:
+                    if part.bestfit is None or part.fitness.values[0] <= part.bestfit.values[0]:
                         part.best = toolbox.clone(part)
                         part.bestfit.values = part.fitness.values
                         print("Updated part bestfit:", part.bestfit.values)
 
-                    if swarm.best is None or part.fitness.values[0] < swarm.bestfit.values[0]:
+                    if swarm.best is None or part.fitness.values[0] <= swarm.bestfit.values[0]:
                         swarm.best = toolbox.clone(part)
                         swarm.bestfit.values = part.fitness.values
                         swarm.no_improvement_iters = 0
@@ -652,7 +652,7 @@ def main(data, max_iterations=500, verbose=True):
 
         best_fitness_in_population = min(swarm.bestfit.values[0] for swarm in population if swarm.bestfit.values)
         print("Best fitness: ", best_fitness_in_population)
-        if best_fitness_in_population < best_global_fitness:
+        if best_fitness_in_population <= best_global_fitness:
             for swarm_idx, swarm in enumerate(population):
                 for particle_idx, particle in enumerate(swarm):
                     if particle.fitness.values[0] < best_global_fitness:
