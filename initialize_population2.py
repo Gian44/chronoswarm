@@ -187,17 +187,65 @@ def curricula_map():
 
     return course_to_unique_courses
 
-    
+def calculate_ld_and_sd():
+    """Calculate Largest Degree (LD) and Saturation Degree (SD) for each course."""
+    ld = {course: 0 for course in courses}  # Largest Degree
+    sd = {course: 0 for course in courses}  # Saturation Degree
+
+    # Calculate LD (number of conflicts)
+    for course in courses:
+        for other_course in courses:
+            if course != other_course and has_conflict(course, other_course):
+                ld[course] += 1
+
+    # Calculate SD (number of distinct timeslots assigned to conflicting courses)
+    for course in courses:
+        timeslots = set()
+        for day in timetable:
+            for period in timetable[day]:
+                for assigned_course in get_assigned_courses_by_period(day, period):
+                    if has_conflict(course, assigned_course):
+                        timeslots.add((day, period))
+        sd[course] = len(timeslots)
+
+    return ld, sd
+
+def relax_constraints(course):
+    """Relax constraints for a course to find feasible slots."""
+    available_slots = []
+    for day in timetable:
+        for period in timetable[day]:
+            for room in timetable[day][period]:
+                slot = [day, period, room]
+                if timetable[day][period][room] == -1:  # Ignore conflicts and room capacity
+                    available_slots.append(slot)
+    return available_slots
+
+def optimize_soft_constraints():
+    """Reassign courses to minimize soft constraint violations."""
+    for day in timetable:
+        for period in timetable[day]:
+            for room in timetable[day][period]:
+                course = timetable[day][period][room]
+                if course != -1:
+                    available_slots = get_available_slots(course, [day, period, room])
+                    if available_slots:
+                        new_slot = available_slots[random.randint(0, len(available_slots) - 1)]
+                        timetable[day][period][room] = -1
+                        timetable[new_slot[0]][new_slot[1]][new_slot[2]] = course
+
+
 def assign_courses(verbose_param = True):
     global verbose
     verbose = verbose_param
     
     reset_timetable()
+    ld, sd = calculate_ld_and_sd()  # Calculate LD and SD
+
+    # **Updated Sorting for LS Heuristic**
     sequenced_courses = sorted(
         courses.keys(),
-        key=lambda c: (
-            -curricula_map().get(c, 0)  # Secondary: Number of unique courses in the same curricula
-        )
+        key=lambda c: (-ld[c], -sd[c])  # Sort by LD first, then by SD
     )
 
     for _ in range(20):

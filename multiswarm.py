@@ -482,7 +482,7 @@ def main(data, max_iterations=500, verbose=True):
     )
 
     NSWARMS = 1
-    NPARTICLES = 5
+    NPARTICLES = 15
     NEXCESS = 3
     RCLOUD = 0.5
     NDIM = 3
@@ -620,11 +620,11 @@ def main(data, max_iterations=500, verbose=True):
                 print(f"Swarm has been reinitialized. Swarm bestfit is now {swarm.bestfit}.")
             else:
                 for j, part in enumerate(swarm):
-                    print("Particle "+ str((5*i)+(j+1)) + " (Fitness: "+ str(part.fitness.values[0]) + ")")
+                    print("Particle "+ str((NPARTICLES*i)+(j+1)) + " (Fitness: "+ str(part.fitness.values[0]) + ")")
                     prev_pos = toolbox.clone(part)
-                    if part == swarm.best:
+                    """ if part == swarm.best:
                         print("This is the local best particle. Fitness: ", swarm.best.fitness)
-                        continue  # Skip the rest of the loop for this particle
+                        continue  # Skip the rest of the loop for this particle """
                     updateParticle(data, part, part.best, swarm.best, chi, c1, c2, constraints)
                      
                      # Re-evaluate the fitness after updating the particle
@@ -636,12 +636,12 @@ def main(data, max_iterations=500, verbose=True):
                     print("Particle bestfit value: ", part.bestfit.values)
                     print("Current particle fitness:", part.fitness.values)
                     """
-                    if part.bestfit is None or part.fitness.values[0] <= part.bestfit.values[0]:
+                    if part.bestfit is None or (part.fitness.values[0] <= part.bestfit.values[0] and part != part.best):
                         part.best = toolbox.clone(part)
                         part.bestfit.values = part.fitness.values
                         print("Updated part bestfit:", part.bestfit.values)
 
-                    if swarm.best is None or part.fitness.values[0] <= swarm.bestfit.values[0]:
+                    if swarm.best is None or (part.fitness.values[0] <= swarm.bestfit.values[0] and part != swarm.best):
                         swarm.best = toolbox.clone(part)
                         swarm.bestfit.values = part.fitness.values
                         swarm.no_improvement_iters = 0
@@ -650,9 +650,15 @@ def main(data, max_iterations=500, verbose=True):
                         swarm.no_improvement_iters += 1
                         print("No improvement in swarm bestfit.")
 
-        best_fitness_in_population = min(swarm.bestfit.values[0] for swarm in population if swarm.bestfit.values)
+        best_particle = None
+        best_fitness_in_population = float('inf')
+        for swarm in population:
+            if swarm.bestfit.values[0] < best_fitness_in_population:
+                best_particle = swarm.best
+                best_fitness_in_population = best_particle.fitness.values[0]
+
         print("Best fitness: ", best_fitness_in_population)
-        if best_fitness_in_population <= best_global_fitness:
+        if best_fitness_in_population <= best_global_fitness and best_particle != global_best_particle:
             for swarm_idx, swarm in enumerate(population):
                 for particle_idx, particle in enumerate(swarm):
                     if particle.fitness.values[0] < best_global_fitness:
