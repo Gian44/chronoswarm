@@ -200,6 +200,8 @@ def assign_courses(verbose_param = True):
         )
     )
 
+    #print(sequenced_courses)
+
     for _ in range(20):
 
         #**** Procedure 1 *****#

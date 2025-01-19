@@ -2,7 +2,7 @@ import pandas as pd
 import re
 from config import *
 from multiswarm import main as multiswarm_optimization
-from initialize_population2 import assign_courses 
+from initialize_population import assign_courses 
 
 
 # Step 1: Parse the .ctt file

@@ -208,12 +208,6 @@ def updateParticle(data, particle, personal_best, global_best, chi, c1, c2, cons
     # Moves and swaps
     moves = [
         "Room, Day, Timeslot",
-        "Day, Timeslot",
-        "Day",
-        "Timeslot",
-        "Room and Day",
-        "Room and Timeslot",
-        "Room",
     ]
 
     for move in moves:
@@ -484,7 +478,7 @@ def main(data, max_iterations=500, verbose=True):
     NSWARMS = 1
     NPARTICLES = 15
     NEXCESS = 3
-    RCLOUD = 0.5
+    RCLOUD = 1
     NDIM = 3
     BOUNDS = len(rooms) * days * periods 
     
@@ -613,7 +607,7 @@ def main(data, max_iterations=500, verbose=True):
                 convertQuantum(swarm, RCLOUD, swarm.best, constraints, courses, curricula, rooms, days, periods)
                 init_flags[i] = False
                 for j, part in enumerate(swarm):
-                    print("Particle "+ str((5*i)+(j+1)) + " (Fitness: "+ str(part.fitness.values[0]) + ")")
+                    print("Particle "+ str((NPARTICLES*i)+(j+1)) + " (Fitness: "+ str(part.fitness.values[0]) + ")")
                     if swarm.best is None or part.fitness.values < swarm.bestfit.values:
                         swarm.best = toolbox.clone(part)
                         swarm.bestfit.values = part.fitness.values
@@ -668,14 +662,6 @@ def main(data, max_iterations=500, verbose=True):
                         last_global_best_update = iteration
                         print("##############GLOBAL BEST FITNESS UPDATED##############")
                         print(f"Global best updated at iteration {iteration + 1} by swarm {swarm_idx + 1}, particle {particle_idx + 1}")
-
-            # Re-evaluate personal bests for particles
-            for swarm in population:
-                for particle in swarm:
-                    # Check if current particle's fitness is better than its personal best
-                    if particle.fitness < particle.bestfit:
-                        particle.best = toolbox.clone(particle)
-                        particle.bestfit = particle.fitness
 
         # Stop if the fitness meets the target of 0 or less
         if best_global_fitness <= 0:

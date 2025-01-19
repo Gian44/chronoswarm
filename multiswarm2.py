@@ -2,7 +2,7 @@ import itertools
 import math
 import random
 from deap import base, creator, tools
-from initialize_population import assign_courses
+from initialize_population2 import assign_courses
 from functools import partial
 import time
 
@@ -154,12 +154,12 @@ def evaluate_schedule(particle, rooms, courses, curricula, constraints):
 
 toolbox = base.Toolbox()
 
-def updateParticle(data, particle, personal_best, global_best, chi, c1, c2, constraints):
+""" def updateParticle(data, particle, personal_best, global_best, chi, c1, c2, constraints):
     """
-    Updates the particle using PSO velocity formula.
-    Implements moves and swaps for Room, Day, Timeslot systematically.
-    Each move selects a random course and ensures feasibility after each operation.
-    """    
+    #Updates the particle using PSO velocity formula.
+    #Implements moves and swaps for Room, Day, Timeslot systematically.
+    #Each move selects a random course and ensures feasibility after each operation.
+"""    
 
     days = data["num_days"]
     periods = data["periods_per_day"]
@@ -220,8 +220,9 @@ def updateParticle(data, particle, personal_best, global_best, chi, c1, c2, cons
         "Timeslot",
         "Room and Day",
         "Room and Timeslot",
-        "Room",
+        "Room"
     ]
+
     local_best = True if particle == global_best else False
     for move in moves:
         # MOVE PHASE
@@ -327,7 +328,103 @@ def updateParticle(data, particle, personal_best, global_best, chi, c1, c2, cons
                 swap_target_entry["day"], swap_target_entry["period"], swap_target_entry["room_id"] = swap_new_state
         else:
             print(f"{move} swap successful. Penalty improved from {original_penalty} to {swap_penalty}.")
-            original_penalty = swap_penalty
+            original_penalty = swap_penalty """
+
+
+def updateParticle(data, particle, personal_best, global_best, chi, c1, c2, constraints):
+    """
+    Updates a single random entry in the particle using PSO velocity formula.
+    Implements move or swap based on the availability of the target slot.
+    If the particle is local best, it takes random values for day, period, and room.
+    """
+    days = data["num_days"]
+    periods = data["periods_per_day"]
+    rooms = data["rooms"]
+    room_ids = [room["id"] for room in rooms]  # List of room IDs for easier lookup
+    original_penalty = particle.fitness.values[0]  # Get original penalty
+
+    # Check if particle is the local best
+    is_local_best = particle == global_best
+
+    # Function to select a random entry
+    def select_random_entry():
+        index = random.randint(0, len(particle) - 1)
+        return index, particle[index]
+
+    # Function to calculate new values using velocity formula
+    def calculate_new_values(entry, p_best_entry, g_best_entry):
+        r1, r2 = random.random(), random.random()  # Random coefficients
+        current_day, current_period, current_room_id = entry["day"], entry["period"], entry["room_id"]
+        current_room_index = room_ids.index(current_room_id)
+
+        # Personal and global best values
+        p_best_day = p_best_entry["day"] if p_best_entry else current_day
+        g_best_day = g_best_entry["day"] if g_best_entry else current_day
+        p_best_period = p_best_entry["period"] if p_best_entry else current_period
+        g_best_period = g_best_entry["period"] if g_best_entry else current_period
+        p_best_room_index = room_ids.index(p_best_entry["room_id"]) if p_best_entry else current_room_index
+        g_best_room_index = room_ids.index(g_best_entry["room_id"]) if g_best_entry else current_room_index
+
+        # Velocity calculation
+        velocity_day = chi * (c1 * r1 * (p_best_day - current_day) + c2 * r2 * (g_best_day - current_day))
+        velocity_period = chi * (c1 * r1 * (p_best_period - current_period) + c2 * r2 * (g_best_period - current_period))
+        velocity_room = chi * (c1 * r1 * (p_best_room_index - current_room_index) + c2 * r2 * (g_best_room_index - current_room_index))
+
+        # Apply updates with modulo clamping
+        new_day = (current_day + round(velocity_day)) % days
+        new_period = (current_period + round(velocity_period)) % periods
+        new_room_index = (current_room_index + round(velocity_room)) % len(rooms)
+        new_room = room_ids[new_room_index]
+
+        return new_day, new_period, new_room
+
+    # Select a random entry
+    i, entry = select_random_entry()
+    personal_best_entry = personal_best[i] if personal_best else None
+    global_best_entry = global_best[i] if global_best else None
+    original_state = (entry["day"], entry["period"], entry["room_id"])
+
+    # Calculate new values
+    if is_local_best:
+        # Take random values if it is the local best
+        new_day = random.randint(0, days - 1)
+        new_period = random.randint(0, periods - 1)
+        new_room = random.choice(room_ids)
+    else:
+        # Use velocity-based updates otherwise
+        new_day, new_period, new_room = calculate_new_values(entry, personal_best_entry, global_best_entry)
+
+    # Check if the target slot is available
+    target_entry = next(
+        (e for e in particle if e["day"] == new_day and e["period"] == new_period and e["room_id"] == new_room),
+        None
+    )
+
+    if target_entry is None:
+        # MOVE: Update the selected entry to the new slot
+        entry["day"], entry["period"], entry["room_id"] = new_day, new_period, new_room
+        #print("Performed Move: Updated entry to an empty slot.")
+    else:
+        # SWAP: Swap the selected entry with the target entry
+        entry["day"], entry["period"], entry["room_id"], target_entry["day"], target_entry["period"], target_entry["room_id"] = (
+            target_entry["day"], target_entry["period"], target_entry["room_id"],
+            entry["day"], entry["period"], entry["room_id"]
+        )
+        #print("Performed Swap: Swapped with a course in the target slot.")
+
+    # Check feasibility and penalty
+    new_penalty = evaluate_schedule(particle, rooms, data["courses"], data["curricula"], constraints)[0]
+    if not is_feasible(particle, constraints, data["courses"], data["curricula"]) or new_penalty >= original_penalty:
+        # Revert if move or swap is not feasible or penalty increases
+        if target_entry is None:
+            entry["day"], entry["period"], entry["room_id"] = original_state
+        else:
+            entry["day"], entry["period"], entry["room_id"], target_entry["day"], target_entry["period"], target_entry["room_id"] = (
+                original_state[0], original_state[1], original_state[2],
+                new_day, new_period, new_room
+            )
+    else:
+        print(f"Update successful. Penalty improved from {original_penalty} to {new_penalty}.")
 
 def is_feasible(schedule, constraints, courses, curricula):
     """
@@ -486,9 +583,9 @@ def main(data, max_iterations=500, verbose=True):
     )
 
     NSWARMS = 1
-    NPARTICLES = 5
+    NPARTICLES = 25
     NEXCESS = 3
-    RCLOUD = 0.5
+    RCLOUD = 1
     NDIM = 3
     BOUNDS = len(rooms) * days * periods
 
@@ -620,19 +717,19 @@ def main(data, max_iterations=500, verbose=True):
                 convertQuantum(swarm, RCLOUD, swarm.best, constraints, courses, curricula, rooms, days, periods)
                 init_flags[i] = False
                 for j, part in enumerate(swarm):
-                    print("Particle "+ str((5*i)+(j+1)) + " (Fitness: "+ str(part.fitness.values[0]) + ")")
+                    print("Particle "+ str((NPARTICLES*i)+(j+1)) + " (Fitness: "+ str(part.fitness.values[0]) + ")")
                     if swarm.best is None or part.fitness.values < swarm.bestfit.values:
                         swarm.best = toolbox.clone(part)
                         swarm.bestfit.values = part.fitness.values
                 print(f"Swarm has been reinitialized. Swarm bestfit is now {swarm.bestfit}.")
             else:
                 for j, part in enumerate(swarm):
-                    print("Particle "+ str((5*i)+(j+1)) + " (Fitness: "+ str(part.fitness.values[0]) + ")")
+                    print("Particle "+ str((NPARTICLES*i)+(j+1)) + " (Fitness: "+ str(part.fitness.values[0]) + ")")
                     prev_pos = toolbox.clone(part)
 
                     if part == swarm.best:
                         print("This is the local best particle. Fitness: ", swarm.best.fitness)
-                        if swarm.no_improvement_iters > 10:
+                        if swarm.no_improvement_iters > 5:
                             print("Swarm needs improvement")
                             updateParticle(data, part, part.best, swarm.best, chi, c1, c2, constraints)
                         else:
@@ -666,7 +763,7 @@ def main(data, max_iterations=500, verbose=True):
         best_particle = None
         best_fitness_in_population = float('inf')
         for swarm in population:
-            if swarm.bestfit.values[0] < best_fitness_in_population:
+            if swarm.bestfit.values[0] <= best_fitness_in_population:
                 best_particle = swarm.best
                 best_fitness_in_population = best_particle.fitness.values[0]
 
@@ -674,21 +771,13 @@ def main(data, max_iterations=500, verbose=True):
         if best_fitness_in_population <= best_global_fitness and best_particle != global_best_particle:
             for swarm_idx, swarm in enumerate(population):
                 for particle_idx, particle in enumerate(swarm):
-                    if particle.fitness.values[0] < best_global_fitness:
+                    if particle.fitness.values[0] <= best_global_fitness:
                         best_global_fitness = particle.fitness.values[0]
                         global_best_particle = toolbox.clone(particle)
                         best_global_particle_idx = (swarm_idx, particle_idx)
                         last_global_best_update = iteration
                         print("##############GLOBAL BEST FITNESS UPDATED##############")
                         print(f"Global best updated at iteration {iteration + 1} by swarm {swarm_idx + 1}, particle {particle_idx + 1}")
-
-            # Re-evaluate personal bests for particles
-            for swarm in population:
-                for particle in swarm:
-                    # Check if current particle's fitness is better than its personal best
-                    if particle.fitness <= particle.bestfit:
-                        particle.best = toolbox.clone(particle)
-                        particle.bestfit = particle.fitness
 
         # Stop if the fitness meets the target of 0 or less
         if best_global_fitness <= 0:
@@ -707,7 +796,7 @@ def main(data, max_iterations=500, verbose=True):
     for i, fitness in enumerate(initial_fitness_values):
         print(f"Particle {i + 1}: Fitness = {fitness:.2f}")
 
-    particle_origin = (5*best_global_particle_idx[0]) + best_global_particle_idx[1] + 1
+    particle_origin = (NPARTICLES*best_global_particle_idx[0]) + best_global_particle_idx[1] + 1
     if valid_swarms:
         # Find the swarm with the minimum bestfit value
         best_swarm = min(valid_swarms, key=lambda s: s.bestfit.values[0])

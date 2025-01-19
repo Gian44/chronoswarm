@@ -248,6 +248,8 @@ def assign_courses(verbose_param = True):
         key=lambda c: (-ld[c], -sd[c])  # Sort by LD first, then by SD
     )
 
+    #print(sequenced_courses)
+
     for _ in range(20):
 
         #**** Procedure 1 *****#
