@@ -106,6 +106,7 @@ if __name__ == "__main__":
     #print(timetable)
     for i in range(50):
         timetable = generate_initial_solution()
+        print(timetable)
         with open(f"output/initial_solution{i+1}.out", "w") as file:  # Open the file in write mode
                 for day in timetable:
                     for period in timetable[day]:

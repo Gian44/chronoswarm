@@ -186,7 +186,6 @@ def curricula_map():
             course_to_unique_courses[course] = len(unique_courses)
 
     return course_to_unique_courses
-
     
 def assign_courses(verbose_param = True):
     global verbose
@@ -196,7 +195,7 @@ def assign_courses(verbose_param = True):
     sequenced_courses = sorted(
         courses.keys(),
         key=lambda c: (
-            -curricula_map().get(c, 0)  # Secondary: Number of unique courses in the same curricula
+            -curricula_map().get(c, 0),  # LD: Largest Degree (number of conflicts)
         )
     )
 

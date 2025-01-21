@@ -210,31 +210,6 @@ def calculate_ld_and_sd():
 
     return ld, sd
 
-def relax_constraints(course):
-    """Relax constraints for a course to find feasible slots."""
-    available_slots = []
-    for day in timetable:
-        for period in timetable[day]:
-            for room in timetable[day][period]:
-                slot = [day, period, room]
-                if timetable[day][period][room] == -1:  # Ignore conflicts and room capacity
-                    available_slots.append(slot)
-    return available_slots
-
-def optimize_soft_constraints():
-    """Reassign courses to minimize soft constraint violations."""
-    for day in timetable:
-        for period in timetable[day]:
-            for room in timetable[day][period]:
-                course = timetable[day][period][room]
-                if course != -1:
-                    available_slots = get_available_slots(course, [day, period, room])
-                    if available_slots:
-                        new_slot = available_slots[random.randint(0, len(available_slots) - 1)]
-                        timetable[day][period][room] = -1
-                        timetable[new_slot[0]][new_slot[1]][new_slot[2]] = course
-
-
 def assign_courses(verbose_param = True):
     global verbose
     verbose = verbose_param
@@ -264,16 +239,6 @@ def assign_courses(verbose_param = True):
         if is_complete(): 
             break 
 
-        for course in sequenced_courses:
-            for _ in range(courses[course]['lectures'] - courses[course]['assigned_lectures']):
-                available_slots = get_available_slots(course)
-                if available_slots:
-                    slot = available_slots[random.randint(0,len(available_slots)-1)]
-                    timetable[slot[0]][slot[1]][slot[2]] = course
-                    courses[course]['assigned_lectures'] += 1
-
-        if is_complete(): 
-            break 
 
         #**** Procedure 2 *****#
         for course in sequenced_courses:
@@ -355,11 +320,3 @@ def assign_courses(verbose_param = True):
         
     #******* Procedure 5 *******#
     reset_timetable()
-    
-
-
-
-
-
-
-
