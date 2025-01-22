@@ -154,183 +154,6 @@ def evaluate_schedule(particle, rooms, courses, curricula, constraints):
 
 toolbox = base.Toolbox()
 
-""" def updateParticle(data, particle, personal_best, global_best, chi, c1, c2, constraints):
-    """
-    #Updates the particle using PSO velocity formula.
-    #Implements moves and swaps for Room, Day, Timeslot systematically.
-    #Each move selects a random course and ensures feasibility after each operation.
-"""    
-
-    days = data["num_days"]
-    periods = data["periods_per_day"]
-    rooms = data["rooms"]
-    original_penalty = particle.fitness.values[0]     # Get original penalty
-
-    # Function to select a random entry
-    def select_random_entry():
-        index = random.randint(0, len(particle) - 1)
-        return index, particle[index]
-
-    # Function to find corresponding personal and global best entries
-    def get_best_entries(index):
-        personal_best_entry = personal_best[index] if personal_best else None
-        global_best_entry = global_best[index] if global_best else None
-        return personal_best_entry, global_best_entry
-    
-    # Function to get random new values for day, period, and room
-    def get_random_new_values():
-        new_day = random.randint(0, days - 1)
-        new_period = random.randint(0, periods - 1)
-        new_room = random.choice(rooms)["id"]
-        return new_day, new_period, new_room
-
-    # Function to apply velocity-based update
-    def calculate_new_values(entry, p_best_entry, g_best_entry):
-        r1, r2 = random.random(), random.random()  # Random coefficients
-        current_day = entry["day"]
-        current_period = entry["period"]
-        current_room_index = room_map[entry["room_id"]]
-
-        # Personal and global best values for velocity calculation
-        p_best_day = p_best_entry["day"] if p_best_entry else current_day
-        g_best_day = g_best_entry["day"] if g_best_entry else current_day
-        p_best_period = p_best_entry["period"] if p_best_entry else current_period
-        g_best_period = g_best_entry["period"] if g_best_entry else current_period
-        p_best_room_index = room_map[p_best_entry["room_id"]] if p_best_entry else current_room_index
-        g_best_room_index = room_map[g_best_entry["room_id"]] if g_best_entry else current_room_index
-
-        # Calculate velocity components
-        velocity_day = chi * (c1 * r1 * (p_best_day - current_day) + c2 * r2 * (g_best_day - current_day))
-        velocity_period = chi * (c1 * r1 * (p_best_period - current_period) + c2 * r2 * (g_best_period - current_period))
-        velocity_room = chi * (c1 * r1 * (p_best_room_index - current_room_index) + c2 * r2 * (g_best_room_index - current_room_index))
-
-        # Apply updates with modulo clamping
-        new_day = (current_day + round(velocity_day)) % days
-        new_period = (current_period + round(velocity_period)) % periods
-        new_room_index = (current_room_index + round(velocity_room)) % len(rooms)
-        new_room = reverse_room_map[new_room_index]
-        
-        return new_day, new_period, new_room
-
-    # Moves and swaps
-    moves = [
-        "Room, Day, Timeslot",
-        "Day, Timeslot",
-        "Day",
-        "Timeslot",
-        "Room and Day",
-        "Room and Timeslot",
-        "Room"
-    ]
-
-    local_best = True if particle == global_best else False
-    for move in moves:
-        # MOVE PHASE
-        i, entry = select_random_entry()  # Select a random assignment
-        personal_best_entry, global_best_entry = get_best_entries(i)
-        original_state = (entry["day"], entry["period"], entry["room_id"])
-
-        if local_best:
-            new_day, new_period, new_room = get_random_new_values()
-        else:
-            new_day, new_period, new_room = calculate_new_values(entry, personal_best_entry, global_best_entry)
-        
-        # Apply move
-        if move == "Room, Day, Timeslot":
-            entry["day"], entry["period"], entry["room_id"] = new_day, new_period, new_room
-
-        elif move == "Day, Timeslot":
-            entry["day"], entry["period"] = new_day, new_period
-
-        elif move == "Day":
-            entry["day"] = new_day
-
-        elif move == "Timeslot":
-            entry["period"] = new_period
-
-        elif move == "Room and Day":
-            entry["day"], entry["room_id"] = new_day, new_room
-
-        elif move == "Room and Timeslot":
-            entry["period"], entry["room_id"] = new_period, new_room
-
-        elif move == "Room":
-            entry["room_id"] = new_room
-
-        # Check feasibility and penalty, revert if necessary
-        new_penalty = evaluate_schedule(particle, rooms, courses, curricula, constraints)[0]
-        if not is_feasible(particle, constraints, courses, curricula) or new_penalty >= original_penalty:
-            entry["day"], entry["period"], entry["room_id"] = original_state
-        else:
-            print(f"{move} move successful. Penalty improved from {original_penalty} to {new_penalty}.")
-            original_penalty = new_penalty
-
-        # SWAP PHASE
-        swap_index, entry = select_random_entry()  # Ensure a different course for swap
-        swap_personal_best_entry, swap_global_best_entry = get_best_entries(swap_index)
-        swap_original_state = (entry["day"], entry["period"], entry["room_id"])
-
-        # Use calculate_new_values to determine the new day, period, and room
-
-        if local_best:
-            swap_new_day, swap_new_period, swap_new_room = get_random_new_values()
-        else:
-            swap_new_day, swap_new_period, swap_new_room = calculate_new_values(
-                entry, swap_personal_best_entry, swap_global_best_entry
-            )
-
-        # Find the corresponding entry in the particle based on the new values
-        swap_target_entry = next(
-            (e for e in particle if e["day"] == swap_new_day and e["period"] == swap_new_period and e["room_id"] == swap_new_room),
-            None
-        )
-
-        # Save the original state of the target entry (if exists)
-        if swap_target_entry:
-            swap_new_state = (swap_target_entry["day"], swap_target_entry["period"], swap_target_entry["room_id"])
-        else:
-            swap_new_state = None
-
-        # Apply swap based on the move type
-        if move == "Room, Day, Timeslot" and swap_target_entry:
-            entry["day"], entry["period"], entry["room_id"], swap_target_entry["day"], swap_target_entry["period"], swap_target_entry["room_id"] = (
-                swap_target_entry["day"], swap_target_entry["period"], swap_target_entry["room_id"],
-                entry["day"], entry["period"], entry["room_id"]
-            )
-        elif move == "Day, Timeslot" and swap_target_entry:
-            entry["day"], entry["period"], swap_target_entry["day"], swap_target_entry["period"] = (
-                swap_target_entry["day"], swap_target_entry["period"],
-                entry["day"], entry["period"]
-            )
-        elif move == "Day" and swap_target_entry:
-            entry["day"], swap_target_entry["day"] = swap_target_entry["day"], entry["day"]
-        elif move == "Timeslot" and swap_target_entry:
-            entry["period"], swap_target_entry["period"] = swap_target_entry["period"], entry["period"]
-        elif move == "Room and Day" and swap_target_entry:
-            entry["day"], entry["room_id"], swap_target_entry["day"], swap_target_entry["room_id"] = (
-                swap_target_entry["day"], swap_target_entry["room_id"],
-                entry["day"], entry["room_id"]
-            )
-        elif move == "Room and Timeslot" and swap_target_entry:
-            entry["period"], entry["room_id"], swap_target_entry["period"], swap_target_entry["room_id"] = (
-                swap_target_entry["period"], swap_target_entry["room_id"],
-                entry["period"], entry["room_id"]
-            )
-        elif move == "Room" and swap_target_entry:
-            entry["room_id"], swap_target_entry["room_id"] = swap_target_entry["room_id"], entry["room_id"]
-
-        # Check feasibility and penalty after swap
-        swap_penalty = evaluate_schedule(particle, rooms, courses, curricula, constraints)[0]
-        if not is_feasible(particle, constraints, courses, curricula) or swap_penalty >= original_penalty:
-            # Revert swap if not feasible or penalty is worse
-            entry["day"], entry["period"], entry["room_id"] = swap_original_state
-            if swap_target_entry:
-                swap_target_entry["day"], swap_target_entry["period"], swap_target_entry["room_id"] = swap_new_state
-        else:
-            print(f"{move} swap successful. Penalty improved from {original_penalty} to {swap_penalty}.")
-            original_penalty = swap_penalty """
-
-
 def updateParticle(data, particle, personal_best, global_best, chi, c1, c2, constraints):
     """
     Updates a single random entry in the particle using PSO velocity formula.
@@ -583,8 +406,8 @@ def main(data, max_iterations=500, verbose=True):
     )
 
     NSWARMS = 1
-    NPARTICLES = 20
-    NEXCESS = 4
+    NPARTICLES = 5
+    NEXCESS = 3
     RCLOUD = 1
     NDIM = 3
     BOUNDS = len(rooms) * days * periods
@@ -713,24 +536,24 @@ def main(data, max_iterations=500, verbose=True):
         # Update and Randomize Particles
         for i, swarm in enumerate(population):
             if init_flags[i]:
-                print(f"Swarm: {i+1}")
+                #print(f"Swarm: {i+1}")
                 convertQuantum(swarm, RCLOUD, swarm.best, constraints, courses, curricula, rooms, days, periods)
                 init_flags[i] = False
                 for j, part in enumerate(swarm):
-                    print("Particle "+ str((NPARTICLES*i)+(j+1)) + " (Fitness: "+ str(part.fitness.values[0]) + ")")
+                    #print("Particle "+ str((NPARTICLES*i)+(j+1)) + " (Fitness: "+ str(part.fitness.values[0]) + ")")
                     if swarm.best is None or part.fitness.values < swarm.bestfit.values:
                         swarm.best = toolbox.clone(part)
                         swarm.bestfit.values = part.fitness.values
-                print(f"Swarm has been reinitialized. Swarm bestfit is now {swarm.bestfit}.")
+                #print(f"Swarm has been reinitialized. Swarm bestfit is now {swarm.bestfit}.")
             else:
                 for j, part in enumerate(swarm):
-                    print("Particle "+ str((NPARTICLES*i)+(j+1)) + " (Fitness: "+ str(part.fitness.values[0]) + ")")
+                    #print("Particle "+ str((NPARTICLES*i)+(j+1)) + " (Fitness: "+ str(part.fitness.values[0]) + ")")
                     prev_pos = toolbox.clone(part)
 
                     if part == swarm.best:
-                        print("This is the local best particle. Fitness: ", swarm.best.fitness)
+                        #print("This is the local best particle. Fitness: ", swarm.best.fitness)
                         if swarm.no_improvement_iters > 5:
-                            print("Swarm needs improvement")
+                            #print("Swarm needs improvement")
                             updateParticle(data, part, part.best, swarm.best, chi, c1, c2, constraints)
                         else:
                             continue  # Skip the rest of the loop for this particle
@@ -749,16 +572,16 @@ def main(data, max_iterations=500, verbose=True):
                     if part.bestfit is None or (part.fitness.values[0] <= part.bestfit.values[0] and part != part.best):
                         part.best = toolbox.clone(part)
                         part.bestfit.values = part.fitness.values
-                        print("Updated part bestfit:", part.bestfit.values)
+                        #print("Updated part bestfit:", part.bestfit.values)
 
                     if part.fitness.values[0] <= swarm.bestfit.values[0] and part != swarm.best:
                         swarm.best = toolbox.clone(part)
                         swarm.bestfit.values = part.fitness.values
                         swarm.no_improvement_iters = 0
-                        print("****************UPDATED SWARM BESTFIT WITH NEW BEST PARTICLE****************")
+                        #print("****************UPDATED SWARM BESTFIT WITH NEW BEST PARTICLE****************")
                     else:
                         swarm.no_improvement_iters += 1
-                        print("No improvement in swarm bestfit.")
+                        #print("No improvement in swarm bestfit.")
 
         best_particle = None
         best_fitness_in_population = float('inf')
@@ -795,6 +618,11 @@ def main(data, max_iterations=500, verbose=True):
     print("\nInitial Fitness Values Before Optimization:")
     for i, fitness in enumerate(initial_fitness_values):
         print(f"Particle {i + 1}: Fitness = {fitness:.2f}")
+
+    print("\nFitness Values After Optimization:")
+    for i, swarm in enumerate(population):
+        for j, part in enumerate(swarm):
+            print("Solution "+ str((NPARTICLES*i)+(j+1)) + ": " + "Fitness: "+ str(part.fitness.values[0]))
 
     particle_origin = (NPARTICLES*best_global_particle_idx[0]) + best_global_particle_idx[1] + 1
     if valid_swarms:

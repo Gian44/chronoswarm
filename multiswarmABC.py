@@ -1,10 +1,16 @@
 import itertools
 import math
 import random
+import time
+import copy
+from artificial_bee_colony import *
 from deap import base, creator, tools
 from initialize_population2 import assign_courses
 from functools import partial
-import time
+from model import *
+
+
+
 
 # Initialize globals for course and room data, which will be set in main()
 courses = []
@@ -16,215 +22,75 @@ reverse_room_map = {}
 
 # Define the fitness and particle classes
 creator.create("FitnessMin", base.Fitness, weights=(-1.0,))
-creator.create("Particle", list, fitness=creator.FitnessMin, speed=list, best=None, bestfit=None, is_quantum=False)
+creator.create("Particle", dict, fitness=creator.FitnessMin, speed=dict, best=None, bestfit=None, is_quantum=False)
 creator.create("Swarm", list, best=None, bestfit=None)
 
 # Generate a particle (schedule) using Graph-Based Heuristic
-def generate(pclass, course_order):
+def generate(pclass):
     schedule = None
     
     # Keep trying to assign courses until a valid schedule is generated
-    while not schedule:
+    while schedule is None:
         schedule = assign_courses()  # Generate the initial timetable
     
-    particle = []
-
-    for day, periods in schedule.items():
-        for period, rooms in periods.items():
-            for room, course_id in rooms.items():
-                if course_id != -1:  # Skip empty slots
-                    particle.append({
-                        "day": day,
-                        "period": period,
-                        "room_id": room,
-                        "course_id": course_id
-                    })
-
-    # Sort the particle list based on the order of courses in `course_order`
-    particle.sort(key=lambda x: course_order.index(x["course_id"]))
-    return pclass(particle)
+    return pclass(copy.deepcopy(schedule))
 
 
-# Evaluate a particle (schedule) for soft constraint penalties
-def calculate_room_capacity_penalty(particle, rooms, courses):
-    room_capacity_penalty = 0
-    for entry in particle:
-        room = entry["room_id"]
-        course_id = entry["course_id"]
-
-        # Skip empty slots
-        if course_id == -1:
-            continue
-
-        room_details = next((r for r in rooms if r["id"] == room), None)
-        if room_details and any(course["id"] == course_id for course in courses):
-            course = next(course for course in courses if course["id"] == course_id)
-            if course["num_students"] > room_details["capacity"]:
-                room_capacity_penalty += (course["num_students"] - room_details["capacity"])
-    return room_capacity_penalty
-
-def calculate_min_days_violation_penalty(particle, courses, course_assignments):
-    min_days_violation_penalty = 0
-
-    # Calculate penalty for each course
-    for course in courses:
-        course_id = course["id"]
-        assignments = course_assignments[course_id]
-        days_used = {assignment["day"] for assignment in assignments}
-        missing_days = max(0, course["min_days"] - len(days_used))
-        min_days_violation_penalty += 5 * missing_days
-    return min_days_violation_penalty
-
-def calculate_room_stability_penalty(particle, courses, course_assignments):
-    room_stability_penalty = 0
-
-    # Calculate penalty for each course
-    for course in courses:
-        course_id = course["id"]
-        assignments = course_assignments[course_id]
-        rooms_used = {assignment["room_id"] for assignment in assignments}
-        room_stability_penalty += max(0, len(rooms_used) - 1)  # Each extra room adds 1 penalty point
-    return room_stability_penalty
-
-def calculate_curriculum_compactness_penalty(particle, curricula, courses, course_assignments):
-    curriculum_compactness_penalty = 0
-
-    # Calculate curriculum compactness penalty
-    for curriculum in curricula:
-        curriculum_courses = curriculum["courses"]
-        curriculum_assignments = [
-            assignment
-            for course_id in curriculum_courses
-            for assignment in course_assignments[course_id]
-        ]
-
-        # Group assignments by day
-        assignments_by_day = {}
-        for assignment in curriculum_assignments:
-            day = assignment["day"]
-            if day not in assignments_by_day:
-                assignments_by_day[day] = []
-            assignments_by_day[day].append(assignment)
-
-        # Check for non-adjacent lectures in the same day
-        for day, day_assignments in assignments_by_day.items():
-            day_assignments.sort(key=lambda x: x["period"])
-            for i in range(len(day_assignments)):
-                current = day_assignments[i]
-                is_isolated = True
-                if i > 0:  # Check previous
-                    previous = day_assignments[i - 1]
-                    if current["period"] == previous["period"] + 1:
-                        is_isolated = False
-                if i < len(day_assignments) - 1:  # Check next
-                    next_lecture = day_assignments[i + 1]
-                    if current["period"] + 1 == next_lecture["period"]:
-                        is_isolated = False
-                if is_isolated:
-                    curriculum_compactness_penalty += 2  # Each isolated lecture adds 2 points
-    return curriculum_compactness_penalty
-
-def evaluate_schedule(particle, rooms, courses, curricula, constraints):
+def evaluate_schedule(solution, rooms, courses, curricula, constraints):
     """
-    Evaluates the fitness of a particle by calculating the total penalty
+    Evaluates the fitness of a solution by calculating the total penalty
     for soft constraints.
     """
-    # Track course assignments
-    course_assignments = {course["id"]: [] for course in courses}
-    for entry in particle:
-        if entry["course_id"] != -1:
-            course_assignments[entry["course_id"]].append({"day": entry["day"], "period": entry["period"], "room_id": entry["room_id"]})
-
-    room_capacity_penalty = calculate_room_capacity_penalty(particle, rooms, courses)
-    min_days_violation_penalty = calculate_min_days_violation_penalty(particle, courses, course_assignments)
-    room_stability_penalty = calculate_room_stability_penalty(particle, courses, course_assignments)
-    curriculum_compactness_penalty = calculate_curriculum_compactness_penalty(particle, curricula, courses, course_assignments)
-
-    # Calculate total penalty by summing all individual penalties
     total_penalty = (
-        room_capacity_penalty +
-        min_days_violation_penalty +
-        room_stability_penalty +
-        curriculum_compactness_penalty
+        room_capacity_cost(solution) +
+        room_stability_cost(solution) +
+        curriculum_compactness_cost(solution) +
+        minimum_working_days_cost(solution)
     )
-
-    # Return the total penalty as a tuple
-    return (total_penalty,)
+    return (total_penalty,)  # Return as a tuple
 
 toolbox = base.Toolbox()
 
-def updateParticle(data, particle, personal_best, global_best, chi, c1, c2, constraints):
+def updateParticle(data, swarm, constraints, courses, curricula, rooms, days, periods):
     """
-    Updates a particle using PSO velocity formula.
-    The velocity determines which move type to perform.
-    After deciding the move type, it performs either a move or a swap.
+    Update particle using the Artificial Bee Colony (ABC) algorithm.
+
+    Args:
+        data: Input data required for evaluation.
+        swarm: Current swarm of particles.
+        constraints: Hard constraints for feasibility.
+        courses, curricula, rooms, days, periods: Problem-specific data.
+
+    Returns:
+        Updated swarm after applying the ABC algorithm.
     """
-    days = data["num_days"]
-    periods = data["periods_per_day"]
-    rooms = data["rooms"]
-    room_ids = [room["id"] for room in rooms]
-    original_penalty = particle.fitness.values[0]
+    # Convert the swarm into a solution_set for ABC processing
+    current_solution_set = [particle for particle in swarm]
 
-    # Calculate velocity and determine the move type
-    r1, r2 = random.random(), random.random()
-    velocity = max(1, abs(round(chi * (c1 * r1 * (personal_best.fitness.values[0] - particle.fitness.values[0]) + c2 * r2 * (global_best.fitness.values[0] - particle.fitness.values[0])))))
+    # Initialize ABC for the current swarm, retaining prior state
+    abc(current_solution_set, maximum_cycles_param=1000, limit_param=100, retain_state=True)
 
-    #print(f"Velocity: {velocity}")
+    # Perform one cycle of ABC
+    cycle_abc()
+    
+    # Update the swarm with the new solution_set and fitness values
+    for i, solution in enumerate(current_solution_set):
+        swarm[i] = solution
+        swarm[i].fitness.values = toolbox.evaluate(solution)  # Recalculate fitness
+        swarm[i].bestfit = creator.FitnessMin(solution.fitness.values) if swarm[i].bestfit is None else swarm[i].bestfit
 
-    # # Define possible moves
-    # moves = [
-    #     "Room, Day, Timeslot",
-    #     "Day, Timeslot",
-    #     "Day",
-    #     "Timeslot",
-    #     "Room and Day",
-    #     "Room and Timeslot",
-    #     "Room"
-    # ]
-    # move = moves[velocity]
-    # print(f"Selected move: {move}")
+        # Update particle's personal best
+        if swarm[i].best is None or swarm[i].fitness.values < swarm[i].bestfit.values:
+            swarm[i].best = toolbox.clone(swarm[i])
+            swarm[i].bestfit.values = swarm[i].fitness.values
 
-    def get_random_assignment():
-        new_day = random.randint(0, days - 1)
-        new_period = random.randint(0, periods - 1)
-        new_room = random.choice(room_ids)
+    # Update the swarm's global best
+    for particle in swarm:
+        if swarm.best is None or particle.fitness.values < swarm.bestfit.values:
+            swarm.best = toolbox.clone(particle)
+            swarm.bestfit.values = particle.fitness.values
 
-        return new_day, new_period, new_room
-
-    for _ in range(velocity):
-        # Select a random lecture from the particle
-        index, entry = random.choice(list(enumerate(particle)))
-        original_state = (entry["day"], entry["period"], entry["room_id"])
-
-        # Select a random slot for the move
-        new_day, new_period, new_room = get_random_assignment()
-        
-        # Check if the target slot is available
-        target_entry = next(
-            (e for e in particle if e["day"] == new_day and e["period"] == new_period and e["room_id"] == new_room),
-            None
-        )
-
-        if target_entry is None:
-            entry["day"], entry["period"], entry["room_id"] = new_day, new_period, new_room
-        else:
-            entry["day"], entry["period"], entry["room_id"], target_entry["day"], target_entry["period"], target_entry["room_id"] = (
-            target_entry["day"], target_entry["period"], target_entry["room_id"],
-            entry["day"], entry["period"], entry["room_id"]
-        )
-        # Validate the changes
-        new_penalty = evaluate_schedule(particle, rooms, data["courses"], data["curricula"], constraints)[0]
-        if not is_feasible(particle, constraints, data["courses"], data["curricula"]) or new_penalty >= original_penalty:
-            if target_entry is None:
-                entry["day"], entry["period"], entry["room_id"] = original_state
-            else:
-                entry["day"], entry["period"], entry["room_id"], target_entry["day"], target_entry["period"], target_entry["room_id"] = (
-                    original_state[0], original_state[1], original_state[2],
-                    new_day, new_period, new_room
-                )
-        else:
-            #print(f"Update successful. Penalty improved from {original_penalty} to {new_penalty}.")
-            original_penalty = new_penalty
+    return swarm
 
 def is_feasible(schedule, constraints, courses, curricula):
     """
@@ -340,43 +206,79 @@ def get_room_capacity(room_id, rooms):
             return room["capacity"]
     raise ValueError(f"Room ID {room_id} not found in rooms list")
 
+def calculate_distance(p1, p2, days, periods, rooms, room_map):
+    """
+    Calculate the distance between two timetable solutions.
+    The distance is based on the day, period, and room differences for the same course.
+
+    Args:
+        p1 (dict): The first timetable solution.
+        p2 (dict): The second timetable solution.
+        days (int): Total number of days.
+        periods (int): Total number of periods per day.
+        rooms (list): List of all room IDs.
+        room_map (dict): Mapping of room IDs to numeric indices.
+
+    Returns:
+        float: The distance between the two solutions.
+    """
+    distance = 0
+
+    # Iterate over all courses
+    for course_id in courses:
+        slots1 = []  # Collect all slots for course_id in p1
+        slots2 = []  # Collect all slots for course_id in p2
+
+        # Find all assignments for the course in p1
+        for day, periods_dict in p1.items():
+            for period, room_dict in periods_dict.items():
+                for room_id, assigned_course in room_dict.items():
+                    if assigned_course == course_id['id']:
+                        slots1.append({"day": day, "period": period, "room_id": room_id})
+
+        # Find all assignments for the course in p2
+        for day, periods_dict in p2.items():
+            for period, room_dict in periods_dict.items():
+                for room_id, assigned_course in room_dict.items():
+                    if assigned_course == course_id['id']:
+                        slots2.append({"day": day, "period": period, "room_id": room_id})
+
+        # Match up assignments and calculate distances
+        # If the number of slots differ, we match the shorter one
+        for slot1, slot2 in zip(slots1, slots2):
+            distance += (
+                ((slot1["day"] - slot2["day"]) / days) ** 2 +
+                ((slot1["period"] - slot2["period"]) / periods) ** 2 +
+                ((room_map[slot1["room_id"]] - room_map[slot2["room_id"]]) / len(rooms)) ** 2
+            )
+
+    return math.sqrt(distance)
 
 def convertQuantum(swarm, rcloud, centre, constraints, courses, curricula, rooms, days, periods):
     for part in swarm:
-        # Skip reinitializing the best particle
         if part == swarm.best:
             continue
 
-        # Generate new positions around the best-found position (centre) for each course assignment
-        for entry, best_entry in zip(part, centre):
-            best_room_index = room_map[best_entry["room_id"]]
+        for day, periods_dict in centre.items():
+            for period, rooms_dict in periods_dict.items():
+                for room_id, best_course in rooms_dict.items():
+                    if best_course == -1:
+                        continue  # Skip unassigned slots
 
-            # Apply Gaussian random movements
-            new_day = round(best_entry["day"] + rcloud * random.gauss(0, 1))
-            new_period = round(best_entry["period"] + rcloud * random.gauss(0, 1))
-            new_room_index = round(best_room_index + rcloud * random.gauss(0, 1))
+                    # Gaussian movement
+                    new_day = (day + round(rcloud * random.gauss(0, 1))) % days
+                    new_period = (period + round(rcloud * random.gauss(0, 1))) % periods
+                    new_room_index = (room_map[room_id] + round(rcloud * random.gauss(0, 1))) % len(rooms)
+                    new_room = reverse_room_map[new_room_index]
 
-            # Apply modulo-based clamping for cyclic wrapping
-            new_day %= days  # Replace with the actual number of days in the problem
-            new_period %= periods    # Replace with the actual number of periods in the problem
-            new_room_index %= len(rooms)
+                    # Attempt to assign in new positions
+                    original_entry = part.get(new_day, {}).get(new_period, {}).get(new_room, -1)
+                    part[new_day][new_period][new_room] = best_course
+                    
+                    # Check feasibility
+                    if not is_feasible(part, constraints, courses, curricula):
+                        part[new_day][new_period][new_room] = original_entry
 
-            # Convert index back to room ID
-            new_room = reverse_room_map[new_room_index]
-            
-            # Temporarily assign new values to this particle's entry
-            original_entry = (entry["day"], entry["period"], entry["room_id"])
-            entry["day"], entry["period"], entry["room_id"] = new_day, new_period, new_room
-
-            if is_feasible(part, constraints, courses, curricula):
-                continue
-            else:
-                entry["day"], entry["period"], entry["room_id"] = original_entry
-
-
-        # Update fitness after reinitialization
-        part.fitness.values = toolbox.evaluate(part)
-        part.best = part
 
 # Main loop to simulate the Multi-Swarm Particle Swarm Optimization
 def main(data, max_iterations=500, verbose=True):
@@ -395,7 +297,7 @@ def main(data, max_iterations=500, verbose=True):
     for course in courses:
         lectures += course["num_lectures"]
 
-    toolbox.register("particle", partial(generate, course_order=course_order), creator.Particle)
+    toolbox.register("particle", generate, creator.Particle)
     toolbox.register("swarm", tools.initRepeat, creator.Swarm, toolbox.particle)
     toolbox.register(
         "evaluate",
@@ -403,8 +305,8 @@ def main(data, max_iterations=500, verbose=True):
     )
 
     NSWARMS = 1
-    NPARTICLES = 5
-    NEXCESS = 3
+    NPARTICLES = 20
+    NEXCESS = 0
     RCLOUD = 1
     NDIM = 3
     BOUNDS = len(rooms) * days * periods
@@ -427,7 +329,7 @@ def main(data, max_iterations=500, verbose=True):
         swarm.bestfit = creator.FitnessMin((float('inf'),))
         swarm.no_improvement_iters = 0
 
-        for part in swarm:
+        for i, part in enumerate(swarm):
             part.fitness.values = toolbox.evaluate(part)
             part.best = toolbox.clone(part)
             part.bestfit = creator.FitnessMin(part.fitness.values)
@@ -462,14 +364,7 @@ def main(data, max_iterations=500, verbose=True):
 
         for i, swarm in enumerate(population):
             for p1, p2 in itertools.combinations(swarm, 2):
-                distance = math.sqrt(
-                    sum(
-                        ((entry1["day"] - entry2["day"]) / days) ** 2 +
-                        ((entry1["period"] - entry2["period"]) / periods) ** 2 +
-                        ((room_map[entry1["room_id"]] - room_map[entry2["room_id"]]) / len(rooms)) ** 2
-                        for entry1, entry2 in zip(p1, p2)
-                    )
-                )
+                distance = calculate_distance(p1, p2, days, periods, rooms, room_map)
 
                 if distance > 2 * rexcl:
                     all_converged = False
@@ -515,13 +410,8 @@ def main(data, max_iterations=500, verbose=True):
         reinit_swarms = set()
         for s1, s2 in itertools.combinations(range(len(population)), 2):
             if population[s1].best and population[s2].best and not (s1 in reinit_swarms or s2 in reinit_swarms):
-                distance = math.sqrt(
-                    sum(
-                        ((entry1["day"] - entry2["day"]) / days) ** 2 +
-                        ((entry1["period"] - entry2["period"]) / periods) ** 2 +
-                        ((room_map[entry1["room_id"]] - room_map[entry2["room_id"]]) / len(rooms)) ** 2
-                        for entry1, entry2 in zip(population[s1].best, population[s2].best)
-                    )
+                distance = calculate_distance(
+                    population[s1].best, population[s2].best, days, periods, rooms, room_map
                 )
                 if distance < rexcl:
                     reinit_swarms.add(s1 if population[s1].bestfit <= population[s2].bestfit else s2)
@@ -533,45 +423,18 @@ def main(data, max_iterations=500, verbose=True):
         # Update and Randomize Particles
         print("Update and Randomize")
         for i, swarm in enumerate(population):
-            if init_flags[i]:
-                #print(f"Swarm: {i+1}")
-                convertQuantum(swarm, RCLOUD, swarm.best, constraints, courses, curricula, rooms, days, periods)
-                init_flags[i] = False
-                for j, part in enumerate(swarm):
-                    #print("Particle "+ str((NPARTICLES*i)+(j+1)) + " (Fitness: "+ str(part.fitness.values[0]) + ")")
-                    if swarm.best is None or part.fitness.values < swarm.bestfit.values:
-                        swarm.best = toolbox.clone(part)
-                        swarm.bestfit.values = part.fitness.values
-                print(f"Swarm has been reinitialized. Swarm bestfit is now {swarm.bestfit}.")
-            else:
-                for j, part in enumerate(swarm):
-                    #print("Particle "+ str((NPARTICLES*i)+(j+1)) + " (Fitness: "+ str(part.fitness.values[0]) + ")")
-                    prev_pos = toolbox.clone(part)
-
-                    updateParticle(data, part, part.best, swarm.best, chi, c1, c2, constraints)
-                     
-                     # Re-evaluate the fitness after updating the particle
-                    
-                    part.fitness.values = toolbox.evaluate(part)
-                    
-                    # # Print current best in swarm and the current part fitness
-                    # print("Swarm bestfit before comparison:", swarm.bestfit.values)
-                    # print("Particle bestfit value: ", part.bestfit.values)
-                    # print("Current particle fitness:", part.fitness.values)
-                   
-                    if part.bestfit is None or (part.fitness.values[0] <= part.bestfit.values[0] and part != part.best):
-                        part.best = toolbox.clone(part)
-                        part.bestfit.values = part.fitness.values
-                        #print("Updated part bestfit:", part.bestfit.values)
-
-                    if part.fitness.values[0] <= swarm.bestfit.values[0] and part != swarm.best:
-                        swarm.best = toolbox.clone(part)
-                        swarm.bestfit.values = part.fitness.values
-                        swarm.no_improvement_iters = 0
-                        #print("****************UPDATED SWARM BESTFIT WITH NEW BEST PARTICLE****************")
-                    else:
-                        swarm.no_improvement_iters += 1
-                        #print("No improvement in swarm bestfit.")
+            # if init_flags[i]:
+            #     #print(f"Swarm: {i+1}")
+            #     convertQuantum(swarm, RCLOUD, swarm.best, constraints, courses, curricula, rooms, days, periods)
+            #     init_flags[i] = False
+            #     for j, part in enumerate(swarm):
+            #         #print("Particle "+ str((NPARTICLES*i)+(j+1)) + " (Fitness: "+ str(part.fitness.values[0]) + ")")
+            #         if swarm.best is None or part.fitness.values < swarm.bestfit.values:
+            #             swarm.best = toolbox.clone(part)
+            #             swarm.bestfit.values = part.fitness.values
+            #     print(f"Swarm has been reinitialized. Swarm bestfit is now {swarm.bestfit}.")
+            # else:
+            updateParticle(data, swarm, part.best, swarm.best, chi, c1, c2, constraints)
 
         best_particle = None
         best_fitness_in_population = float('inf')
@@ -608,7 +471,7 @@ def main(data, max_iterations=500, verbose=True):
 
     print("\nInitial Fitness Values Before Optimization:")
     for i, fitness in enumerate(initial_fitness_values):
-        print(f"Particle {i + 1}: Fitness = {fitness:.2f}")
+        print(f"Solution {i + 1}: Fitness = {fitness:.2f}")
 
     print("\nFitness Values After Optimization:")
     for i, swarm in enumerate(population):
@@ -619,7 +482,7 @@ def main(data, max_iterations=500, verbose=True):
     if valid_swarms:
         # Find the swarm with the minimum bestfit value
         best_swarm = min(valid_swarms, key=lambda s: s.bestfit.values[0])
-        final_best_schedule = [entry for entry in best_swarm.best]
+        final_best_schedule = best_swarm.best
         print("\nFinal Best Solution Found (Fitness):", best_swarm.bestfit.values[0])
         print(f"\nOptimization completed in {elapsed_time:.2f} seconds.")
     else:
@@ -633,4 +496,17 @@ def main(data, max_iterations=500, verbose=True):
     else:
         print("\nNo valid best solution found.")
 
-    return final_best_schedule
+    best_solution = []
+
+    for day, periods in final_best_schedule.items():
+        for period, rooms in periods.items():
+            for room, course_id in rooms.items():
+                if course_id != -1:  # Skip empty slots
+                    best_solution.append({
+                        "day": day,
+                        "period": period,
+                        "room_id": room,
+                        "course_id": course_id
+                    })
+
+    return best_solution

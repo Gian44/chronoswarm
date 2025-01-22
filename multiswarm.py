@@ -156,10 +156,10 @@ toolbox = base.Toolbox()
 
 def updateParticle(data, particle, personal_best, global_best, chi, c1, c2, constraints):
     """
-    Updates the particle using PSO velocity formula.
-    Implements moves and swaps for Room, Day, Timeslot systematically.
-    Each move selects a random course and ensures feasibility after each operation.
-    """    
+    #Updates the particle using PSO velocity formula.
+    #Implements moves and swaps for Room, Day, Timeslot systematically.
+    #Each move selects a random course and ensures feasibility after each operation.
+"""    
 
     days = data["num_days"]
     periods = data["periods_per_day"]
@@ -176,6 +176,13 @@ def updateParticle(data, particle, personal_best, global_best, chi, c1, c2, cons
         personal_best_entry = personal_best[index] if personal_best else None
         global_best_entry = global_best[index] if global_best else None
         return personal_best_entry, global_best_entry
+    
+    # Function to get random new values for day, period, and room
+    def get_random_new_values():
+        new_day = random.randint(0, days - 1)
+        new_period = random.randint(0, periods - 1)
+        new_room = random.choice(rooms)["id"]
+        return new_day, new_period, new_room
 
     # Function to apply velocity-based update
     def calculate_new_values(entry, p_best_entry, g_best_entry):
@@ -208,41 +215,46 @@ def updateParticle(data, particle, personal_best, global_best, chi, c1, c2, cons
     # Moves and swaps
     moves = [
         "Room, Day, Timeslot",
+        "Day, Timeslot",
+        "Day",
+        "Timeslot",
+        "Room and Day",
+        "Room and Timeslot",
+        "Room"
     ]
 
+    local_best = True if particle == global_best else False
     for move in moves:
         # MOVE PHASE
         i, entry = select_random_entry()  # Select a random assignment
         personal_best_entry, global_best_entry = get_best_entries(i)
         original_state = (entry["day"], entry["period"], entry["room_id"])
 
+        if local_best:
+            new_day, new_period, new_room = get_random_new_values()
+        else:
+            new_day, new_period, new_room = calculate_new_values(entry, personal_best_entry, global_best_entry)
+        
         # Apply move
         if move == "Room, Day, Timeslot":
-            new_day, new_period, new_room = calculate_new_values(entry, personal_best_entry, global_best_entry)
             entry["day"], entry["period"], entry["room_id"] = new_day, new_period, new_room
 
         elif move == "Day, Timeslot":
-            new_day, new_period, _ = calculate_new_values(entry, personal_best_entry, global_best_entry)
             entry["day"], entry["period"] = new_day, new_period
 
         elif move == "Day":
-            new_day, _, _ = calculate_new_values(entry, personal_best_entry, global_best_entry)
             entry["day"] = new_day
 
         elif move == "Timeslot":
-            _, new_period, _ = calculate_new_values(entry, personal_best_entry, global_best_entry)
             entry["period"] = new_period
 
         elif move == "Room and Day":
-            new_day, _, new_room = calculate_new_values(entry, personal_best_entry, global_best_entry)
             entry["day"], entry["room_id"] = new_day, new_room
 
         elif move == "Room and Timeslot":
-            _, new_period, new_room = calculate_new_values(entry, personal_best_entry, global_best_entry)
             entry["period"], entry["room_id"] = new_period, new_room
 
         elif move == "Room":
-            _, _, new_room = calculate_new_values(entry, personal_best_entry, global_best_entry)
             entry["room_id"] = new_room
 
         # Check feasibility and penalty, revert if necessary
@@ -259,9 +271,13 @@ def updateParticle(data, particle, personal_best, global_best, chi, c1, c2, cons
         swap_original_state = (entry["day"], entry["period"], entry["room_id"])
 
         # Use calculate_new_values to determine the new day, period, and room
-        swap_new_day, swap_new_period, swap_new_room = calculate_new_values(
-            entry, swap_personal_best_entry, swap_global_best_entry
-        )
+
+        if local_best:
+            swap_new_day, swap_new_period, swap_new_room = get_random_new_values()
+        else:
+            swap_new_day, swap_new_period, swap_new_room = calculate_new_values(
+                entry, swap_personal_best_entry, swap_global_best_entry
+            )
 
         # Find the corresponding entry in the particle based on the new values
         swap_target_entry = next(
@@ -452,7 +468,7 @@ def convertQuantum(swarm, rcloud, centre, constraints, courses, curricula, rooms
         part.best = None
 
 # Main loop to simulate the Multi-Swarm Particle Swarm Optimization
-def main(data, max_iterations=10000, verbose=True):
+def main(data, max_iterations=500, verbose=True):
     global courses, rooms, curricula, room_map, reverse_room_map
     courses = data["courses"]
     rooms = data["rooms"]
@@ -680,6 +696,11 @@ def main(data, max_iterations=10000, verbose=True):
     print("\nInitial Fitness Values Before Optimization:")
     for i, fitness in enumerate(initial_fitness_values):
         print(f"Particle {i + 1}: Fitness = {fitness:.2f}")
+    
+    print("\nFitness Values After Optimization:")
+    for i, swarm in enumerate(population):
+        for j, part in enumerate(swarm):
+            print("Solution "+ str((NPARTICLES*i)+(j+1)) + ": " + "Fitness: "+ str(part.fitness.values[0]))
 
     particle_origin = (5*best_global_particle_idx[0]) + best_global_particle_idx[1] + 1
     if valid_swarms:
