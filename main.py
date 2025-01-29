@@ -1,30 +1,39 @@
-from artificial_bee_colony3 import ArtificialBeeColony
-from initialize_population import assign_courses
+from artificial_bee_colony3 import MultiSwarmABC
+import pandas as pd
 from config import *
-from ctt_parser import read_ctt_file
-import copy
+import time
 
-# Read .ctt file
-filename = INPUT
-courses, rooms, unavailability_constraints, curricula, days, periods_per_day = read_ctt_file(filename)
 
-# Create initial solutions
-solution_set = [copy.deepcopy(assign_courses()) for _ in range(20)]
+def save_output(schedule, csv_path, out_path):
+    # Convert the schedule to DataFrame for CSV
+    df = pd.DataFrame(schedule)
+    df.to_csv(csv_path, index=False)
+    
+    # Write the output to .out format
+    with open(out_path, 'w') as f:
+        for entry in schedule:
+            line = f"{entry['course_id']} {entry['room_id']} {entry['day']} {entry['period']}\n"
+            f.write(line)
 
-# Initialize Artificial Bee Colony
-abc = ArtificialBeeColony(
-    solution_set=solution_set,
-    maximum_cycles=100,
-    limit=500,
-    courses=courses,
-    rooms=rooms,
-    unavailability_constraints=unavailability_constraints,
-    curricula=curricula,
-    days=days,
-    periods_per_day=periods_per_day,
-)
+NUM_SWARMS = 4
+POPULATION_SIZE = 5
+MAX_ITERATIONS = 3000
+LIMIT = 100
 
-# Run the ABC algorithm
-for cycle in range(abc.maximum_cycles):
-    best_solution = abc.cycle()
-    print(f"Cycle {cycle + 1}: Best Fitness = {abc.evaluate_fitness(best_solution)}")
+multi_swarm = MultiSwarmABC(NUM_SWARMS, POPULATION_SIZE, MAX_ITERATIONS, LIMIT)
+
+start_time = time.time()
+
+best_solutions, best_fitness = multi_swarm.run()
+
+best = min(fitness for fitness in best_fitness)
+
+end_time = time.time()
+elapsed_time = end_time - start_time
+
+multi_swarm.get_fitness_per_swarm()
+print("Best fitness:", best)
+
+solution = multi_swarm.get_global_best(best_solutions, best_fitness)
+save_output(solution, "mnt/data/comp01.csv", OUTPUT)
+print(f"\nOptimization completed in {elapsed_time:.2f} seconds.")

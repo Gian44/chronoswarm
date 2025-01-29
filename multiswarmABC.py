@@ -282,7 +282,7 @@ def convertQuantum(swarm, rcloud, centre, constraints, courses, curricula, rooms
 
 
 # Main loop to simulate the Multi-Swarm Particle Swarm Optimization
-def main(data, max_iterations=500, verbose=True):
+def main(data, max_iterations=10, verbose=True):
     global courses, rooms, curricula, room_map, reverse_room_map
     courses = data["courses"]
     rooms = data["rooms"]
@@ -498,6 +498,7 @@ def main(data, max_iterations=500, verbose=True):
         print("\nNo valid best solution found.")
 
     best_solution = []
+    print(final_best_schedule)
 
     for day, periods in final_best_schedule.items():
         for period, rooms in periods.items():
@@ -509,5 +510,5 @@ def main(data, max_iterations=500, verbose=True):
                         "room_id": room,
                         "course_id": course_id
                     })
-
+    print(best_solution)
     return best_solution
