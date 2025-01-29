@@ -1,3 +1,6 @@
+import os
+import shutil
+
 def read_ctt_file(filename):
     with open(filename, 'r') as file:
         data = file.readlines()
@@ -73,3 +76,27 @@ def read_ctt_file(filename):
         courses[course_id]['assigned_lectures'] = 0
 
     return courses, rooms, unavailability_constraints, curricula, days, periods_per_day
+
+def write_out_file(timetable, filename):
+    with open(filename, "w") as file:  # Open the file in write mode
+        for day in timetable:
+            for period in timetable[day]:
+                for room in timetable[day][period]:
+                    if timetable[day][period][room] != -1:
+                            file.write(f"{timetable[day][period][room]} {room} {day} {period}\n")
+
+def delete_all_files_in_output():
+    output_folder = "output"
+    # Check if the folder exists
+    if os.path.exists(output_folder) and os.path.isdir(output_folder):
+        # Loop through and delete all files
+        for filename in os.listdir(output_folder):
+            file_path = os.path.join(output_folder, filename)
+            try:
+                if os.path.isfile(file_path) or os.path.islink(file_path):
+                    os.unlink(file_path)  # Remove file or symlink
+                elif os.path.isdir(file_path):
+                    shutil.rmtree(file_path)  # Remove directory
+            except Exception as e:
+                print(f"Error deleting file {file_path}: {e}")
+

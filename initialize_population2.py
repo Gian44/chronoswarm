@@ -239,6 +239,16 @@ def assign_courses(verbose_param = True):
         if is_complete(): 
             break 
 
+        for course in sequenced_courses:
+            for _ in range(courses[course]['lectures'] - courses[course]['assigned_lectures']):
+                available_slots = get_available_slots(course)
+                if available_slots:
+                    slot = available_slots[random.randint(0,len(available_slots)-1)]
+                    timetable[slot[0]][slot[1]][slot[2]] = course
+                    courses[course]['assigned_lectures'] += 1
+
+        if is_complete(): 
+            break 
 
         #**** Procedure 2 *****#
         for course in sequenced_courses:

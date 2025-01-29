@@ -3,9 +3,9 @@ import math
 import random
 import time
 import copy
-from abc_algo import *
+from pso import *
 from deap import base, creator, tools
-from initialize_population import assign_courses
+from initialize_population2 import assign_courses
 from functools import partial
 from model import *
 
@@ -68,10 +68,10 @@ def updateParticle(data, swarm, constraints, courses, curricula, rooms, days, pe
     current_solution_set = [particle for particle in swarm]
 
     # Initialize ABC for the current swarm, retaining prior state
-    abc(current_solution_set, maximum_cycles_param=1000, limit_param=100, retain_state=True)
+    pso(current_solution_set, 1, 100, retain_state=True)
 
     # Perform one cycle of ABC
-    cycle_abc()
+    cycle_pso()
     
     # Update the swarm with the new solution_set and fitness values
     for i, solution in enumerate(current_solution_set):
@@ -83,7 +83,6 @@ def updateParticle(data, swarm, constraints, courses, curricula, rooms, days, pe
         if swarm[i].best is None or swarm[i].fitness.values < swarm[i].bestfit.values:
             swarm[i].best = toolbox.clone(swarm[i])
             swarm[i].bestfit.values = swarm[i].fitness.values
-
 
     # Update the swarm's global best
     for particle in swarm:
@@ -282,7 +281,7 @@ def convertQuantum(swarm, rcloud, centre, constraints, courses, curricula, rooms
 
 
 # Main loop to simulate the Multi-Swarm Particle Swarm Optimization
-def main(data, max_iterations=500, verbose=True):
+def main(data, max_iterations=5000, verbose=True):
     global courses, rooms, curricula, room_map, reverse_room_map
     courses = data["courses"]
     rooms = data["rooms"]
@@ -366,7 +365,6 @@ def main(data, max_iterations=500, verbose=True):
         for i, swarm in enumerate(population):
             for p1, p2 in itertools.combinations(swarm, 2):
                 distance = calculate_distance(p1, p2, days, periods, rooms, room_map)
-
                 if distance > 2 * rexcl:
                     all_converged = False
                     #print("Not all have converged yet")
@@ -409,6 +407,7 @@ def main(data, max_iterations=500, verbose=True):
         # Exclusion
         print("Exclusion check")
         reinit_swarms = set()
+        
         for s1, s2 in itertools.combinations(range(len(population)), 2):
             if population[s1].best and population[s2].best and not (s1 in reinit_swarms or s2 in reinit_swarms):
                 distance = calculate_distance(

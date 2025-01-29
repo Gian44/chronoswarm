@@ -15,6 +15,8 @@ toolbox = base.Toolbox()
 filename = INPUT  # Replace with your .ctt file name
 courses, rooms, unavailability_constraints, curricula, days, periods_per_day= read_ctt_file(filename)
 
+periods_rooms = periods_per_day * len(rooms)
+days_periods_rooms = periods_rooms * days
 abandoned = []
 limit = 1000
 maximum_cycles = 0
@@ -25,7 +27,7 @@ employed_bee = []  #Marks the position of each employed bee
 stagnation = [] #Marks the iterations where the solution did not improve
 total_fitness = 0
 population  = 0
-
+global_best_solution = {}
 
 def generate(pclass):
     schedule = None
@@ -37,6 +39,7 @@ def generate(pclass):
     return pclass(copy.deepcopy(schedule))
 
 toolbox.register("particle", generate, creator.Particle)
+
 def get_abc_best_solution():
     best = float("inf")
     best_solution = {}
@@ -59,7 +62,7 @@ def get_abc_worst():
     return (worst_solution)
     
 def calculate_probability():
-    best = float("inf")
+    best = 100000
     global total_fitness
     total_fitness = 0
     for solution in range(population):
@@ -82,7 +85,7 @@ def abandon(position):
 
 def employed_bee_phase():
     for bee in range(len(employed_bee)-1):
-        swap(1, bee)
+            swap(1, bee)
 
 def onlooker_bee_phase():
     calculate_probability()
@@ -96,7 +99,7 @@ def onlooker_bee_phase():
                 onlooker_bee[bee] = solution
                 break
             
-    for _ in range(2):
+    for _ in range(3):
         for bee in range(len(onlooker_bee)):
             swap(2, bee)
             if(stagnation[bee] == limit) and (bee not in abandoned): 
@@ -119,16 +122,65 @@ def swap(type, bee): #types: (1)Employed (2)Onlooker
         solution = copy.deepcopy(solution_set[onlooker_bee[bee]])
     #course = list(courses.keys())[random.randint(0,len(courses)-1)]
     course = -1
+    lecture_num = 0
+    cell = 0
+    endSearch = False
+    neighbor = random.choice(solution_set)#global_best_solution
+    
+    neighbor_cell = 0
     while (course == -1):
         day = random.randint(0, days-1)
         period = random.randint(0, periods_per_day-1)
         room = list(rooms.keys())[random.randint(0,len(rooms)-1)]
         course = solution[day][period][room]
+
+    for d in range (days):
+        for p in range (periods_per_day):
+            for r in rooms:
+                cell+= 1
+                if solution[d][p][r] == course:
+                    lecture_num += 1
+                if d == day and p == period and r == room:
+                    endSearch = True
+                    break
+                
+
+            if endSearch: break
+        if endSearch: break
+    lect_count = lecture_num
+    endSearch = False
+    for d in range (days):
+        for p in range (periods_per_day):
+            for r in rooms:
+                neighbor_cell+= 1
+                if neighbor[d][p][r] == course:
+                    lect_count -= 1
+                if lect_count == 0:
+                    endSearch = True
+                    break
+            if endSearch: break
+        if endSearch: break
+        
+    neighborhood_search_value = (round(cell + round(random.random() * (cell - neighbor_cell)))%(days_periods_rooms)) + 1
+        
+    #print(str(cell) + ", " + str(neighbor_cell) + "\n")
+    #print(periods_rooms)
     if get_available_slots(course, solution, [day, period, room]):
+        
+        
+        #print (neighborhood_search_value)
         available_slots = get_available_slots(course, solution, [day, period, room])
-        rnd = random.randint(0,len(available_slots)-1)
+        slot_index = 0
+        least_difference = float("inf")
+        i = 0 
+        for slot in available_slots:
+            new_cell = (slot[0] * (periods_rooms) )+ (slot[1] * len(rooms)) + getRoomIndex(slot[2])
+            if least_difference >= abs(new_cell - neighborhood_search_value):
+                slot_index = i
+                least_difference = abs(new_cell - neighborhood_search_value)
+            i += 1
         solution[day][period][room] = -1
-        slot = available_slots[rnd]
+        slot = available_slots[slot_index]
         solution[slot[0]][slot[1]][slot[2]] = course
         if (type==1 and evaluate_fitness(solution) <= fitness_set[bee]) or ( type == 2 and evaluate_fitness(solution) <= fitness_set[onlooker_bee[bee]]):
             fitness_set[index] = evaluate_fitness(solution)
@@ -136,20 +188,37 @@ def swap(type, bee): #types: (1)Employed (2)Onlooker
             stagnation[index] = 0 #Reset
     elif get_swappable_slots(course, solution, [day, period, room]):
         available_slots = get_swappable_slots(course, solution, [day, period, room])
-        rnd = random.randint(0,len(available_slots)-1)
-        slot = available_slots[rnd]
+        slot_index = 0
+        least_difference = float("inf")
+        i = 0 
+        for slot in available_slots:
+            new_cell = (slot[0] * (periods_rooms) )+ (slot[1] * len(rooms)) + getRoomIndex(slot[2])
+            if least_difference >= abs(new_cell - neighborhood_search_value):
+                slot_index = i
+                least_difference = abs(new_cell - neighborhood_search_value)
+            i += 1
+        slot = available_slots[slot_index]
         solution[day][period][room] = solution[slot[0]][slot[1]][slot[2]]
-        solution[slot[0]][slot[1]][slot[2]] = course 
+        solution[slot[0]][slot[1]][slot[2]] = course
         if (type==1 and evaluate_fitness(solution) <= fitness_set[bee]) or ( type == 2 and evaluate_fitness(solution) <= fitness_set[onlooker_bee[bee]]):
             fitness_set[index] = evaluate_fitness(solution)
             solution_set[index] = solution
             stagnation[index] = 0 #Reset
+                    
     
 
 def produce_solution():
     return assign_courses()
 
-#*********Utils**********#              
+#*********Utils**********#        
+
+def getRoomIndex(room):
+    cnt = 0
+    for r in rooms:
+        cnt+=1
+        if room == r:
+            return cnt
+    return -1 
 def get_available_slots(course, timetable, constraint_period=[-1,-1,-1]):
     available_slots = []
     for day in timetable:
@@ -241,14 +310,18 @@ def abc(solution_set_param, maximum_cycles_param, limit_param, retain_state=Fals
         for i, solution in enumerate(solution_set):
             fitness_set[i] = evaluate_fitness(solution)
 
-
 def cycle_abc():
+
     employed_bee_phase()
     onlooker_bee_phase()
     scout_bee_phase()
     stagnate()
 
-    #return get_abc_best_solution()
+    global global_best_solution
+    global_best_solution = get_abc_best_solution()
+    return global_best_solution
+
+    
 
 def kem_abc(best_solution):
     solution_set[get_abc_worst()] = best_solution
