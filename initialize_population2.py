@@ -45,7 +45,6 @@ def get_strict_available_slots(course, constraint_period=[-1,-1,-1]):
 
 def get_available_slots(course, constraint_period=[-1,-1,-1]):
     available_slots = []
-    total_room_violations = 0
     for day in timetable:
         for period in timetable[day]:
             hasConflict = False
@@ -61,8 +60,6 @@ def get_available_slots(course, constraint_period=[-1,-1,-1]):
                     if course in unavailability_constraints and (day, period) in unavailability_constraints[course]:
                         isValid = False
                     if timetable[day][period][room] == -1 and isValid:
-                        if (courses[course]['students']  > rooms[room]):
-                            total_room_violations += courses[course]['students']  - rooms[room]
                         available_slots.append(slot)
     return available_slots
 
@@ -238,7 +235,7 @@ def assign_courses(verbose_param = True):
 
         if is_complete(): 
             break 
-
+        
         for course in sequenced_courses:
             for _ in range(courses[course]['lectures'] - courses[course]['assigned_lectures']):
                 available_slots = get_available_slots(course)
@@ -309,7 +306,8 @@ def assign_courses(verbose_param = True):
                     timetable[target_conflict_slot[0]][target_conflict_slot[1]][target_conflict_slot[2]] = conflict_course
                     courses[course]['assigned_lectures'] += 1
             
-        if is_complete(): break
+        if is_complete(): break  
+
 
         #******* Swapping Procedure *******#
         #This procedure tries to move all assigned courses to other available slots

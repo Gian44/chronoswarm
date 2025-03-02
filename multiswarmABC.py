@@ -424,17 +424,17 @@ def main(data, max_iterations=10, verbose=True):
         # Update and Randomize Particles
         print("Update and Randomize")
         for i, swarm in enumerate(population):
-            # if init_flags[i]:
-            #     #print(f"Swarm: {i+1}")
-            #     convertQuantum(swarm, RCLOUD, swarm.best, constraints, courses, curricula, rooms, days, periods)
-            #     init_flags[i] = False
-            #     for j, part in enumerate(swarm):
-            #         #print("Particle "+ str((NPARTICLES*i)+(j+1)) + " (Fitness: "+ str(part.fitness.values[0]) + ")")
-            #         if swarm.best is None or part.fitness.values < swarm.bestfit.values:
-            #             swarm.best = toolbox.clone(part)
-            #             swarm.bestfit.values = part.fitness.values
-            #     print(f"Swarm has been reinitialized. Swarm bestfit is now {swarm.bestfit}.")
-            # else:
+            if init_flags[i]:
+                #print(f"Swarm: {i+1}")
+                convertQuantum(swarm, RCLOUD, swarm.best, constraints, courses, curricula, rooms, days, periods)
+                init_flags[i] = False
+                for j, part in enumerate(swarm):
+                    #print("Particle "+ str((NPARTICLES*i)+(j+1)) + " (Fitness: "+ str(part.fitness.values[0]) + ")")
+                    if swarm.best is None or part.fitness.values < swarm.bestfit.values:
+                        swarm.best = toolbox.clone(part)
+                        swarm.bestfit.values = part.fitness.values
+                print(f"Swarm has been reinitialized. Swarm bestfit is now {swarm.bestfit}.")
+            else:
                 updateParticle(data, swarm, part.best, swarm.best, chi, c1, c2, constraints)
 
         best_particle = None

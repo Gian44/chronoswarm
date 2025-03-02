@@ -154,3 +154,5 @@ def eval_fitness(timetable):
 
 
     return cost
+
+

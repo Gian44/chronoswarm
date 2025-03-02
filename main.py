@@ -15,25 +15,24 @@ def save_output(schedule, csv_path, out_path):
             line = f"{entry['course_id']} {entry['room_id']} {entry['day']} {entry['period']}\n"
             f.write(line)
 
-NUM_SWARMS = 4
+NUM_SWARMS = 1
 POPULATION_SIZE = 5
-MAX_ITERATIONS = 3000
+MAX_ITERATIONS = 5000
 LIMIT = 100
+R_CLOUD = 1
 
-multi_swarm = MultiSwarmABC(NUM_SWARMS, POPULATION_SIZE, MAX_ITERATIONS, LIMIT)
+multi_swarm = MultiSwarmABC(NUM_SWARMS, POPULATION_SIZE, MAX_ITERATIONS, LIMIT, R_CLOUD)
 
 start_time = time.time()
 
-best_solutions, best_fitness = multi_swarm.run()
-
-best = min(fitness for fitness in best_fitness)
+best_solution, best_fitness = multi_swarm.run()
 
 end_time = time.time()
 elapsed_time = end_time - start_time
 
 multi_swarm.get_fitness_per_swarm()
-print("Best fitness:", best)
+print("Best fitness:", best_fitness)
 
-solution = multi_swarm.get_global_best(best_solutions, best_fitness)
+solution = multi_swarm.get_global_best(best_solution)
 save_output(solution, "mnt/data/comp01.csv", OUTPUT)
 print(f"\nOptimization completed in {elapsed_time:.2f} seconds.")
