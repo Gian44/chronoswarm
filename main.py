@@ -3,7 +3,6 @@ import pandas as pd
 from config import *
 import time
 
-
 def save_output(schedule, csv_path, out_path):
     # Convert the schedule to DataFrame for CSV
     df = pd.DataFrame(schedule)
@@ -14,13 +13,6 @@ def save_output(schedule, csv_path, out_path):
         for entry in schedule:
             line = f"{entry['course_id']} {entry['room_id']} {entry['day']} {entry['period']}\n"
             f.write(line)
-
-NUM_SWARMS = 1
-POPULATION_SIZE = 5
-MAX_ITERATIONS = 5000
-LIMIT = 100
-R_CLOUD = 1
-
 multi_swarm = MultiSwarmABC(NUM_SWARMS, POPULATION_SIZE, MAX_ITERATIONS, LIMIT, R_CLOUD)
 
 start_time = time.time()
