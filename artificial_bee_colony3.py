@@ -38,7 +38,7 @@ class ABCSwarm:
         self.beta = 0.05
         self.alpha = 0.05
         self.gamma = 0.05
-        self.gd_iteration = 50
+        self.gd_iteration = 100
 
     def produce_solution(self):
         """Generate an initial feasible solution."""
@@ -108,12 +108,12 @@ class ABCSwarm:
         r = ec - (self.alpha * c_cent)
         e = r - (self.gamma * c_cent)
 
-        ec_r = (ec - r) / 3
+        ec_r = (ec - r) / 4
         ec1 = ec-ec_r
         ec2 = ec1-ec_r
         ec3 = ec2-ec_r
 
-        r_e = (r - e) / 3
+        r_e = (r - e) / 4
         r1 = r-r_e
         r2 = r1-r_e
         r3 = r2-r_e
@@ -133,7 +133,7 @@ class ABCSwarm:
     def calculate_dr(self, fitness, nm_values, iteration):
         dr_values = []
         for nm_value in nm_values:
-            dr = (fitness - nm_value) / iteration
+            dr = abs(fitness - nm_value) / iteration
             dr_values.append(dr)
         return dr_values
 
@@ -147,7 +147,7 @@ class ABCSwarm:
         # i_base = 1
         # alpha = 50
         nm_values = self.nelder_mead_values()
-        #print(nm_values)
+        # print(nm_values)
         
         for solution in range(len(self.solution_set)):
             sol_i, best = self.solution_set[solution], self.solution_set[solution]
@@ -161,9 +161,7 @@ class ABCSwarm:
                     index_q = min(valid_indices, key=lambda i: abs(sol_best - nm_values[i]))  
                 else:
                     index_q = nm_values.index(min(nm_values))  
-                beta = abs(decay_rates[index_q]) # decay rate
-                # if beta < 0:
-                #     print("negative decay: ", beta)
+                beta = decay_rates[index_q] # decay rate
                 new_solution = copy.deepcopy(sol_i)
                 self.update_gd(new_solution)
                 fitness = self.evaluate_fitness(new_solution)
