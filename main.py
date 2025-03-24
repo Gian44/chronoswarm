@@ -17,7 +17,7 @@ multi_swarm = MultiSwarmABC(NUM_SWARMS, POPULATION_SIZE, MAX_ITERATIONS, LIMIT, 
 
 start_time = time.time()
 
-best_solution, best_fitness = multi_swarm.run()
+best_solution, best_fitness = multi_swarm.run(start_time)
 
 end_time = time.time()
 elapsed_time = end_time - start_time

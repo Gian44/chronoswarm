@@ -6,6 +6,7 @@ from ctt_parser import read_ctt_file
 from initialize_population2 import assign_courses as initialize_solution
 from model import *
 from config import *
+import time
 
 # Load problem data
 filename = INPUT  # Replace with your .ctt file name
@@ -38,7 +39,7 @@ class ABCSwarm:
         self.beta = 0.05
         self.alpha = 0.05
         self.gamma = 0.05
-        self.gd_iteration = 100
+        self.gd_iteration = 2000
 
     def produce_solution(self):
         """Generate an initial feasible solution."""
@@ -140,27 +141,36 @@ class ABCSwarm:
 
     def onlooker_bee_phase(self):
         """Move onlooker bees based on fitness probabilities."""
-        # probabilities = self.calculate_probability()
-        # probability_set = []
-        # onlooker = []
-        # iteration_count = []
-        # i_base = 1
-        # alpha = 50
+        probabilities = self.calculate_probability()
+        probability_set = []
+        onlooker = []
+        iteration_count = []
+        i_base = 1
+        alpha = 50
         nm_values = self.nelder_mead_values()
         # print(nm_values)
+
+        for solution in range(len(self.solution_set)):
+            probability_frac = 1/(self.fitness_set[solution]+1)/probabilities
+            # print(probability_frac)
+            probability = round(((1/(self.fitness_set[solution]+1))/probabilities) * (self.population_size*2))
+            # print(probability)
+            probability_set.append(probability)
+            iteration_count.append(round(i_base + (alpha * probability_frac)))
         
+        index = 0
         for solution in range(len(self.solution_set)):
             sol_i, best = self.solution_set[solution], self.solution_set[solution]
             sol_best = self.fitness_set[solution]
             level = self.fitness_set[solution]
             decay_rates = self.calculate_dr(sol_best, nm_values, self.gd_iteration)
-            #print(decay_rates)
-            for _ in range(self.gd_iteration):
+            # print(decay_rates)
+            for _ in range(iteration_count[index]):
                 valid_indices = [i for i in range(len(nm_values)) if nm_values[i] <= sol_best]
                 if valid_indices:
                     index_q = min(valid_indices, key=lambda i: abs(sol_best - nm_values[i]))  
                 else:
-                    index_q = nm_values.index(min(nm_values))  
+                    index_q = nm_values.index(min(nm_values))
                 beta = decay_rates[index_q] # decay rate
                 new_solution = copy.deepcopy(sol_i)
                 self.update_gd(new_solution)
@@ -180,7 +190,9 @@ class ABCSwarm:
 
             if self.stagnation[solution] >= self.limit and solution not in self.abandoned:
                 self.abandoned.append(solution)
-                print("ABANDON")    
+                print("ABANDON") 
+
+            index +=1   
 
 
         # for solution in range(len(self.solution_set)):
@@ -874,7 +886,7 @@ class MultiSwarmABC:
         swarm.reinitialize_flag = False  # Reset flag after quantum reinitialization
 
 
-    def run(self):
+    def run(self, start_time):
         """Run all swarms for the specified number of iterations with exclusion and anti-convergence."""
         # ✅ Compute convergence & exclusion radii first
         rconv = (days_periods_rooms / len(self.swarms)) ** (1 / 3)
@@ -950,7 +962,7 @@ class MultiSwarmABC:
             for swarm in self.swarms:
                 best = swarm.global_best_solution
                 print(str(swarm.fitness_set) + " " + str(swarm.evaluate_fitness(best)))
-        
+            
         return self.global_best_solution, self.global_best_fitness
     
     def get_fitness_per_swarm(self):
