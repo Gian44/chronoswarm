@@ -217,7 +217,7 @@ def assign_courses(verbose_param = True):
     # **Updated Sorting for LS Heuristic**
     sequenced_courses = sorted(
         courses.keys(),
-        key=lambda c: (-ld[c], -sd[c])  # Sort by LD first, then by SD
+        key=lambda c: (-ld[c])  # Sort by LD first, then by SD
     )
 
     #print(sequenced_courses)

@@ -21,8 +21,8 @@ for course in courses:
 
 s1 = 1 # Weight of Room Capacity constraint
 s2 = 1 # Weight of Room Stability constraint
-s3 = 2 # Weight of Curriculum Compactness constraint
-s4 = 5 # Weight of Minimum Working Days constraint
+s3 = 1 # Weight of Curriculum Compactness constraint
+s4 = 1 # Weight of Minimum Working Days constraint
 
 def room_capacity_cost(timetable): #Evaluate the cost on S1 (Room Capacity)
     cost = 0
