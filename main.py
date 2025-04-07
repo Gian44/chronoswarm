@@ -1,4 +1,4 @@
-from artificial_bee_colony3 import MultiSwarmABC
+from artificial_bee_colony5 import MultiSwarmABC
 import pandas as pd
 from config import *
 import time
