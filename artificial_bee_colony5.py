@@ -288,6 +288,8 @@ class ABCSwarm:
 
         chosen_room = random.choice(list(rooms.keys()))
 
+        current_fitness = self.fitness_set[index]
+
         # Go through each period for the chosen room
         for day in range(days):
             for period in range(periods_per_day):
@@ -307,9 +309,11 @@ class ABCSwarm:
                                 solution[day][period][chosen_room] = neighbor_lecture
                                 solution[slot[0]][slot[1]][slot[2]] = source_lecture
                                 new_fitness = self.evaluate_fitness(solution)
-                                if new_fitness > self.fitness_set[index]:
+                                if new_fitness > current_fitness:
                                     solution[day][period][chosen_room] = source_lecture
                                     solution[slot[0]][slot[1]][slot[2]] = neighbor_lecture
+                                else:
+                                    current_fitness = new_fitness
                                     
                 elif source_lecture == -1:
                     cslots = []
@@ -328,19 +332,20 @@ class ABCSwarm:
                                 solution[day][period][chosen_room] = neighbor_lecture
                                 solution[cslot[0]][cslot[1]][cslot[2]] = -1
                                 new_fitness = self.evaluate_fitness(solution)
-                                if new_fitness > self.fitness_set[index]:
+                                if new_fitness > current_fitness:
                                     solution[day][period][chosen_room] = -1
                                     solution[cslot[0]][cslot[1]][cslot[2]] = neighbor_lecture
+                                else:
+                                    current_fitness = new_fitness
                                     
-
         # Evaluate the new solution
         new_fitness = self.evaluate_fitness(solution)
-
         # Accept new solution if it's better or equal
-        if new_fitness <= self.fitness_set[index] and solution != solution:
+        if new_fitness <= self.fitness_set[index]:
             self.fitness_set[index] = new_fitness
             self.solution_set[index] = solution
             self.stagnation[index] = 0
+
     def update_gd(self, solution):
         #course = list(courses.keys())[random.randint(0,len(courses)-1)]
         course = -1

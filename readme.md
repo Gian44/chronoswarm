@@ -1,6 +1,6 @@
 # **ChronoSwarm**
 
-This project provides a scheduling optimization algorithm based on MUulti-Swarm Particle Swarm Optimization (MSPSO)
+This project provides a scheduling optimization algorithm based on Multi-Swarm Artificial Bee Colony (MSABC)
 
 ---
 
