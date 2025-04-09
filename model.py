@@ -140,6 +140,22 @@ def get_curriculum_compactness_cost(course, day, period, solution):
             curriculum_penalty += 1 * s3  # Penalty for isolated lecture
     return curriculum_penalty
 
+def get_adjacent_curriculum_courses(course, day, period, timetable):
+    neighbors = set()
+
+    # Check the previous period (before swap)
+    if period > 0:  # Ensure the previous period exists
+        for c in timetable[day][period - 1].values():
+            if c != -1:
+                neighbors.add((c, day, period - 1))
+
+    # Check the next period (after swap)
+    if period < periods_per_day - 1:  # Ensure the next period exists
+        for c in timetable[day][period + 1].values():
+            if c != -1:
+                neighbors.add((c, day, period + 1))
+    return neighbors
+
 
 def calculate_individual_lecture_cost(course, day, period, room, timetable):
     """
@@ -162,18 +178,20 @@ def calculate_individual_lecture_cost(course, day, period, room, timetable):
     min_working_days = 0
 
     # Room Capacity Cost (S1)
-    room_capacity += get_room_capacity_cost(course, room)
+    room_capacity = get_room_capacity_cost(course, room)
 
     # Room Stability Cost (S2)
-    room_stability += get_room_stability_cost(course, timetable)
+    room_stability = get_room_stability_cost(course, timetable)
 
     # Curriculum Compactness Cost (S3)
-    curriculum_compactness += get_curriculum_compactness_cost(course, day, period, timetable)
+    curriculum_compactness = get_curriculum_compactness_cost(course, day, period, timetable)
 
     # Minimum Working Days Cost (S4)
-    min_working_days += get_min_working_days_cost(course, timetable)
+    min_working_days = get_min_working_days_cost(course, timetable)
 
     total_cost = room_capacity + room_stability + curriculum_compactness + min_working_days
+
+    #print(course, room_capacity, room_stability, curriculum_compactness, min_working_days)
 
     return room_capacity, room_stability, curriculum_compactness, min_working_days
 
@@ -212,10 +230,11 @@ def eval_fitness(timetable):
     total_cost += rc + rs + cc + mwd
 
     # Debug prints to show individual costs
-    # print(f"Room Capacity: {rc}")
-    # print(f"Room Stability: {rs}")
-    # print(f"Curriculum Compactness: {cc}")
-    # print(f"Min Working Days: {mwd}")
+    print()
+    print(f"Room Capacity: {rc}")
+    print(f"Room Stability: {rs}")
+    print(f"Curriculum Compactness: {cc}")
+    print(f"Min Working Days: {mwd}")
     # print(f"Total fitness cost: {total_cost}")  # Debug print
 
     return total_cost
