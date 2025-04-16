@@ -19,22 +19,23 @@ room_map = {room: i for i, room in enumerate(rooms)}
 reverse_room_map = {i: room for room, i in room_map.items()}
 total_lectures = sum(course['lectures'] for course in courses.values())
 
+moves = 0
+
 class ABCSwarm:
     """Represents a single swarm in the Multi-Swarm Artificial Bee Colony (MSABC)."""
 
-    def __init__(self, population_size, limit, num_swarms):
+    def __init__(self, population_size, limit):
         self.population_size = population_size
         self.limit = limit
-        self.num_swarms = num_swarms
         self.solution_set = [self.produce_solution() for _ in range(population_size)]
         self.fitness_set = [self.evaluate_fitness(sol) for sol in self.solution_set]
-        self.depth_set = [self.evaluate_fitness(sol) for sol in self.solution_set]
         print(self.fitness_set)
         self.onlooker_bee = []
         self.employed_bee = [0] * population_size
         self.stagnation = [0] * population_size
         self.abandoned = []
         self.global_best_solution = self.get_best_solution()
+        self.best_fitness = min(self.fitness_set)
         self.reinitialize_flag = False  
 
         # NMGD 
@@ -79,17 +80,6 @@ class ABCSwarm:
                 worst = fitness
                 worst_solution = solution
         return self.solution_set[worst_solution]
-    
-    def get_second_worst(self):
-        worst = self.evaluate_fitness(self.get_worst_solution())
-        best = self.evaluate_fitness(self.get_best_solution())
-        second_solution = -1
-        for solution in range(len(self.solution_set)):
-            fitness = self.fitness_set[solution]
-            if fitness > best and fitness < worst: 
-                best = fitness
-                second_solution = solution
-        return self.solution_set[second_solution]
 
     def calculate_probability(self):
         """Calculate selection probabilities for onlooker bees."""
@@ -99,8 +89,10 @@ class ABCSwarm:
     def employed_bee_phase(self):
         """Perform solution improvement for employed bees."""
         for bee in range(self.population_size):
-            self.update(1, bee)
-            #self.update2(1, bee, bee)
+            #self.update(1, bee)
+            self.update2(1, bee, bee)
+            if self.fitness_set[bee] < self.best_fitness:
+                self.best_fitness = self.fitness_set[bee]
 
     def onlooker_bee_phase(self):
         """Move onlooker bees based on fitness probabilities."""
@@ -122,32 +114,20 @@ class ABCSwarm:
                 onlooker.append(solution)
                 iteration_count.append(round(i_base + (alpha * probability_frac)))
  
-        # course = -1
-        # for bee in range(len(self.onlooker_bee)):
-        #     for _ in range(iteration_count[bee]):
-        #         solution = copy.deepcopy(self.onlooker_bee[bee])
+        for bee in range(len(self.onlooker_bee)):
+            for _ in range(iteration_count[bee]):
+                fitness = self.update2(2, bee, onlooker[bee])
+                if fitness <= self.fitness_set[onlooker[bee]]:
+                    self.solution_set[onlooker[bee]] = self.onlooker_bee[bee]
+                    self.fitness_set[onlooker[bee]] = fitness
+                if self.fitness_set[onlooker[bee]] < self.best_fitness:
+                    self.best_fitness = self.fitness_set[onlooker[bee]]
+                    self.global_best_solution = self.onlooker_bee[bee]
 
-        #         while course == -1:
-        #             day = random.randint(0, days - 1)
-        #             period = random.randint(0, periods_per_day - 1)
-        #             room = list(rooms.keys())[random.randint(0, len(rooms) - 1)]
-        #             course = solution[day][period][room]
-
-        #         #print(course, day, period, room)
-
-        #         old_cost = calculate_individual_lecture_cost(course, day, period, room, solution)
-        #         delta = self.update2(2, bee, onlooker[bee], course, day, period, room, old_cost)
-
-        #         course = -1
-
-        #     if delta <= 0:
-        #         self.solution_set[onlooker[bee]] = self.onlooker_bee[bee]
-        #         self.fitness_set[onlooker[bee]] = self.evaluate_fitness(solution)
-
-        # for bee in range(len(self.solution_set)):
-        #     if self.stagnation[bee] >= self.limit and bee not in self.abandoned:
-        #         self.abandoned.append(bee)
-        #         print("ABANDON")
+        for bee in range(len(self.solution_set)):
+            if self.stagnation[bee] >= self.limit and bee not in self.abandoned:
+                self.abandoned.append(bee)
+                print("ABANDON")
 
         self.onlooker_bee.clear()
 
@@ -160,49 +140,77 @@ class ABCSwarm:
             self.abandoned.clear()
 
     def scout(self, bee):
-        """ Replace abandoned solutions with new ones using simulated annealing-like approach """
+        """Replace abandoned solutions with new ones using 30% modification while satisfying room capacity and stability."""
         print(f"Bee {bee} abandoned and replaced with new solution")
         print(f"Fitness Now: {self.fitness_set[bee]}")
-        moves = 0
 
         solution = self.solution_set[bee]
-        fitness = self.evaluate_fitness(self.global_best_solution)
-        best_fitness = fitness
+        lectures_to_modify = math.ceil(0.3 * days_periods_rooms)  # 30% modification
+        fitness = self.fitness_set[bee]
+        scout_fitness = self.evaluate_scout_fitness(solution)
+        modified_count = 0
+        attempts = 0
+        new_fitness = 0
         new_solution = copy.deepcopy(solution)
+        
 
-        # Simulated Annealing starting temperature
-        cooling_rate = 0.82
-        reheat_coefficient = 7
-        cooling_coefficient = 7
-        initial_temperature = 2.5 * math.pow(math.pow(cooling_rate, -1.7*reheat_coefficient), 0)
-        temperature = initial_temperature
+        while modified_count < lectures_to_modify and attempts < 1000:
+            course = -1
+            day, period, room = -1, -1, "-1"
 
-        for _ in range(cooling_coefficient):
-            for _ in range(reheat_coefficient * 282):
-                    new_solution = self.update_gd(solution)
-                    temp_fit = self.evaluate_fitness(new_solution)
-                    #print(temp_fit, fitness)
+            while course == -1:
+                day = random.randint(0, days - 1)
+                period = random.randint(0, periods_per_day - 1)
+                room = random.choice(list(rooms.keys()))
+                course = new_solution[day][period][room]
 
-                    delta = temp_fit - fitness
-                    #print(delta)
-                    # Apply simulated annealing-like condition: probabilistically accept worse solutions
-                    #print(temperature, math.exp(-delta / temperature))
-                    moves = moves + 1
-                    if delta < 0 or random.random() < math.exp(-delta / temperature):
-                        #print(temperature, math.exp(-delta / temperature))
-                        solution = copy.deepcopy(new_solution)
-                        fitness = temp_fit
-                        if temp_fit < best_fitness:
-                            best_fitness = temp_fit
-                            print("kabdkawvdkadawd ajwd")
-            # Cooling down the temperature
-            temperature *= cooling_rate
+            if self.solution_set[bee] != self.get_best_solution():
+            
+                available_slots = get_available_slots(course, new_solution, [day, period, room])
+                valid_slots = available_slots
 
-        # Assign the solution if improved or accepted based on simulated annealing
-        new_fitness = self.evaluate_fitness(solution)
-        self.solution_set[bee] = solution
-        self.fitness_set[bee] = new_fitness
-        print(f"Fitness After: {self.fitness_set[bee]}")
+                if valid_slots:
+                    chosen_slot = random.choice(valid_slots)
+                    new_solution[day][period][room] = new_solution[chosen_slot[0]][chosen_slot[1]][chosen_slot[2]]
+                    new_solution[chosen_slot[0]][chosen_slot[1]][chosen_slot[2]] = course
+                    new_fitness = self.evaluate_scout_fitness(new_solution)
+                    if new_fitness > scout_fitness:
+                        new_solution[chosen_slot[0]][chosen_slot[1]][chosen_slot[2]] = new_solution[day][period][room] 
+                        new_solution[day][period][room] = course
+                    else:
+                        modified_count += 1
+                        # print("Modified")
+            else:
+                
+                available_slots = get_available_slots(course, new_solution, [day, period, room])
+                valid_slots = available_slots
+
+                if valid_slots:
+                    chosen_slot = random.choice(valid_slots)
+                    new_solution[day][period][room] = new_solution[chosen_slot[0]][chosen_slot[1]][chosen_slot[2]]
+                    new_solution[chosen_slot[0]][chosen_slot[1]][chosen_slot[2]] = course
+                    new_fitness = self.evaluate_fitness(new_solution)
+                    if new_fitness > fitness:
+                        new_solution[chosen_slot[0]][chosen_slot[1]][chosen_slot[2]] = new_solution[day][period][room] 
+                        new_solution[day][period][room] = course
+                    else:
+                        modified_count += 1
+                        # print("Modified 2")
+     
+            attempts += 1
+
+        if self.solution_set[bee] != self.get_best_solution():
+            # print("Modified")
+            if new_fitness <= scout_fitness:
+                self.solution_set[bee] = new_solution
+                self.fitness_set[bee] = self.evaluate_fitness(new_solution)
+                print(f"Fitness After: {self.fitness_set[bee]}")
+            else:
+                print("No scout found")
+        else:
+            print("Modified 2")
+            self.solution_set[bee] = new_solution
+            print(f"Fitness After: {self.fitness_set[bee]}")
 
     def stagnate(self):
         """Increase stagnation counter for each solution."""
@@ -221,32 +229,23 @@ class ABCSwarm:
 
         course = -1
         courses_index = list(courses.keys())
+        courses_index.append(-1)
         neighbor_index = random.randint(0, len(self.solution_set)-1)  # Get index
         neighbor1 = self.global_best_solution #self.solution_set[neighbor_index]  # Get corresponding solution
         neighbor2 = random.choice(self.solution_set) #global_best_solution
         best_neighbor = self.global_best_solution
         day, period, room = 0, 0, "-1"
         
-        while course == -1 or neighbor_course == -1:
+        while course == -1:
             day = random.randint(0, days - 1)
             period = random.randint(0, periods_per_day - 1)
             room = list(rooms.keys())[random.randint(0, len(rooms) - 1)]
             course = solution[day][period][room]
-            neighbor_course = neighbor1[day][period][room]
+            
+        neighbor_course = neighbor1[day][period][room]
 
         course_value = courses_index.index(course)
         neighbor_value = courses_index.index(neighbor_course)
-
-        old_cost1 = calculate_individual_lecture_cost(course, day, period, room, solution)
-        new_cost1 = old_cost1
-        old_cost2 = (0, 0, 0, 0)
-        new_cost2 = (0, 0, 0, 0)
-
-        # Get affected adjacent slots before the swap for both courses
-        affected_slots_before = set()
-        affected_slots_after = set()
-
-        affected_slots_before.update(get_adjacent_curriculum_courses(course, day, period, solution))  
 
         # fitness_i = self.fitness_set[bee_index]
         # fitness_j = self.fitness_set[neighbor_index]
@@ -256,6 +255,7 @@ class ABCSwarm:
         #     w = ((fitness_i * course_value) - (fitness_j * neighbor_value)) / (fitness_i + fitness_j)
         # else:
         #     w = ((fitness_i * course_value) + (fitness_j * neighbor_value)) / (fitness_i + fitness_j)
+
         neighborhood_search_value = (round(course_value + round(random.random() * (course_value - neighbor_value)))%(len(courses_index)))
         #neighborhood_search_value = (round(cell + round(random.random() * (best_cell - cell + neighbor_cell1 - neighbor_cell2)))%(days_periods_rooms)) + 1
         #neighborhood_search_value = (round(w + round(random.random() * (cell - neighbor_cell1)))%(days_periods_rooms)) + 1
@@ -274,17 +274,11 @@ class ABCSwarm:
         for r in rooms:
             #print(str(new_solution[day][period][r]) + " and " + str(courses_index[neighborhood_search_value]))
             if new_solution[day][period][r] == courses_index[neighborhood_search_value] and room != r:
-                old_cost2 = calculate_individual_lecture_cost(courses_index[neighborhood_search_value], day, period, r, solution)
                 new_solution[day][period][room] = courses_index[neighborhood_search_value]
                 new_solution[day][period][r] = course
-                print("Solution Swapped (Before swap 1)")
+                #print("Solution Swapped (Before swap 1)")
                 swapped1 = True
                 swapped2 = True
-                new_cost1 = calculate_individual_lecture_cost(course, day, period, r, new_solution)
-                new_cost2 = calculate_individual_lecture_cost(courses_index[neighborhood_search_value], day, period, room,  new_solution)
-                affected_slots_before.update(get_adjacent_curriculum_courses(courses_index[neighborhood_search_value], day, period, solution))
-                affected_slots_after.update(get_adjacent_curriculum_courses(course, day, period, new_solution))
-                affected_slots_after.update(get_adjacent_curriculum_courses(courses_index[neighborhood_search_value], day, period, new_solution))
                 break
         
         if not swapped1:
@@ -300,23 +294,24 @@ class ABCSwarm:
                     for p in range (periods_per_day):
                         for r in rooms:
                             #print(str(new_solution[d][p][r]) + " and " + str(courses_index[neighborhood_search_value]))
-                            if new_solution[d][p][r] == courses_index[neighborhood_search_value]:
+                            if solution[d][p][r] == courses_index[neighborhood_search_value]:
                                 cslots.append([d, p, r])
 
                 #print("cslots", cslots)
                 cslot = random.choice(cslots)
-                available_slots = get_available_slots(courses_index[neighborhood_search_value],  new_solution)
+                available_slots = get_available_slots(courses_index[neighborhood_search_value], solution)
                 if available_slots:
                     slot = random.choice(available_slots)
-                    old_cost2 = calculate_individual_lecture_cost(courses_index[neighborhood_search_value], cslot[0], cslot[1], cslot[2], new_solution)
                     new_solution[cslot[0]][cslot[1]][cslot[2]] = -1
                     new_solution[slot[0]][slot[1]][slot[2]] = courses_index[neighborhood_search_value]
-                    print("unavailable or conflict")
-                    new_cost2 = calculate_individual_lecture_cost(courses_index[neighborhood_search_value], slot[0], slot[1], slot[2],  new_solution)
-                    affected_slots_before.update(get_adjacent_curriculum_courses(courses_index[neighborhood_search_value], cslot[0], cslot[1], solution))
-                    affected_slots_after.update(get_adjacent_curriculum_courses(courses_index[neighborhood_search_value], slot[0], 
-                    slot[1], new_solution))
-                 
+
+            elif courses_index[neighborhood_search_value] == -1:
+                #print("Is -1")
+                available_slots = get_available_slots(course, solution)
+                if available_slots:
+                    slot = random.choice(available_slots)
+                    new_solution[day][period][room] = -1
+                    new_solution[slot[0]][slot[1]][slot[2]] = course
             else:       
                 if not swapped1:
                     emp_slots = []
@@ -335,17 +330,11 @@ class ABCSwarm:
                     cslot = random.choice(cslots)
                     
                     if emp_slots:
-                        old_cost2 = calculate_individual_lecture_cost(courses_index[neighborhood_search_value], cslot[0], cslot[1], cslot[2], solution)
                         emp_slot = random.choice(emp_slots)
                         new_solution[cslot[0]][cslot[1]][cslot[2]] = -1
                         new_solution[day][period][room] = courses_index[neighborhood_search_value]
                         new_solution[emp_slot[0]][emp_slot[1]][emp_slot[2]] = course
-                        print("Solution Swapped (Before swap 2)")
-                        new_cost1 = calculate_individual_lecture_cost(course, emp_slot[0], emp_slot[1], emp_slot[2],  new_solution)
-                        new_cost2 = calculate_individual_lecture_cost(courses_index[neighborhood_search_value], day, period, room,  new_solution)
-                        affected_slots_before.update(get_adjacent_curriculum_courses(courses_index[neighborhood_search_value], cslot[0], cslot[1], solution))
-                        affected_slots_after.update(get_adjacent_curriculum_courses(courses_index[neighborhood_search_value], day, period, new_solution))
-                        affected_slots_after.update(get_adjacent_curriculum_courses(course, emp_slot[0], emp_slot[1], new_solution))
+                        #print("Solution Swapped (Before swap 2)")
                         swapped2 = True
 
                 if not swapped2:
@@ -358,53 +347,32 @@ class ABCSwarm:
 
                     #print("cslots", cslots)
                     cslot = random.choice(cslots)
-                    available_slots = get_available_slots(course,  new_solution, cslot)
+                    available_slots = get_available_slots(course, solution, cslot)
                     if available_slots:
-                        old_cost2 = calculate_individual_lecture_cost(courses_index[neighborhood_search_value], cslot[0], cslot[1], cslot[2], solution)
                         slot = random.choice(available_slots)
                         new_solution[cslot[0]][cslot[1]][cslot[2]] = -1
                         new_solution[day][period][room] = courses_index[neighborhood_search_value]
                         new_solution[slot[0]][slot[1]][slot[2]] = course
-                        new_cost1 = calculate_individual_lecture_cost(course, slot[0], slot[1], slot[2], new_solution)
-                        new_cost2 = calculate_individual_lecture_cost(courses_index[neighborhood_search_value], day, period, room, new_solution)
-                        affected_slots_before.update(get_adjacent_curriculum_courses(courses_index[neighborhood_search_value], cslot[0], cslot[1], solution))
-                        affected_slots_after.update(get_adjacent_curriculum_courses(courses_index[neighborhood_search_value], day, period, new_solution))
-                        affected_slots_after.update(get_adjacent_curriculum_courses(course, slot[0], slot[1], new_solution))
-                        print("Solution Swapped (in swap 3)")
-        delta = 0
-        course1 = 0
-        course2 = 0
-        print(old_cost1)
-        print(new_cost1)
-        print(old_cost2)
-        print(new_cost2)
-
-        old_cc_before = sum([get_curriculum_compactness_cost(c, d, p, solution) for c, d, p in affected_slots_before])
-        new_cc_after = sum([get_curriculum_compactness_cost(c, d, p, new_solution) for c, d, p in affected_slots_after])
-
-        delta_cc = new_cc_after - old_cc_before
-
-        for i in range(len(old_cost1)):
-            course1 += new_cost1[i] - old_cost1[i]
-            course2 += new_cost2[i] - old_cost2[i]
-        delta = course1 + course2 + delta_cc
-        print(course1, course2)
-
-        print("Delta is: ", delta)
-        print("Delta cc is: ", new_cc_after, old_cc_before)
-        fitness = self.evaluate_fitness(solution)
-        print("Previous Fitness: ", fitness)
+                        #print("Solution Swapped (in swap 3)")
+   
         new_fitness = self.evaluate_fitness(new_solution)
-        print("Fitness Now: ", new_fitness)
 
-        if delta <= 0:
-            if delta < 0:
+        if new_fitness <= self.fitness_set[index] and solution != new_solution:
+            if new_fitness < self.fitness_set[index]:
                 self.stagnation[index] = 0
-            self.fitness_set[index] += delta
+            self.fitness_set[index] = new_fitness
             self.solution_set[index] = new_solution
 
-    def update_gd(self, solution):
-        #course = list(courses.keys())[random.randint(0,len(courses)-1)]
+    def update2(self, type, bee, source):
+        global moves
+        index = 0
+        if type == 1:
+            index = bee
+            solution = copy.deepcopy(self.solution_set[bee])
+        else:
+            index = source
+            solution = copy.deepcopy(self.onlooker_bee[bee])
+            
         course = -1
         day, period, room = 0, 0, "-1"
         
@@ -598,204 +566,30 @@ class ABCSwarm:
                     solution[lecture[1]][lecture[2]][lecture[3]] = -1
                     solution[slot[0]][slot[1]][lecture[3]] = lecture[0]
 
-        return solution
+        new_fitness = self.evaluate_fitness(solution)
+        personal_fitness = 0 
 
-    def update2(self, type, bee, source, course, day, period, room, old_cost):
-        """Apply a neighborhood move and return the delta cost."""
-        index = source if type == 2 else bee
-        solution = copy.deepcopy(self.onlooker_bee[bee] if type == 2 else self.solution_set[bee])
-
-        rnd = random.randint(1, 3)
-        # Step 1: Calculate the old cost of the lecture (room stability, etc.)
-        new_cost = old_cost
-
-        if rnd == 1:  # N1: Change day_period
-            available_slots = get_available_period(course, solution, [day, period, room])
-            if available_slots:
-                r_day = random.randint(0, days - 1)
-                r_period = random.randint(0, periods_per_day - 1)
-                for d in range(days):
-                    for s in range(periods_per_day):
-                        new_day = (d + r_day) % days
-                        new_period = (s + r_period) % periods_per_day
-                        if [new_day, new_period, room] in available_slots:
-                            solution[day][period][room] = -1
-                            solution[new_day][new_period][room] = course
-                            new_cost = calculate_individual_lecture_cost(course, new_day, new_period, room, solution)
-                            break
-                    else:
-                        continue
-                    break
-
-        elif rnd == 2:  # N2: Swap room in same period
-            new_room = random.choice(list(rooms.keys()))
-            solution[day][period][room], solution[day][period][new_room] = (
-                solution[day][period][new_room],
-                course,
-            )
-            new_cost = calculate_individual_lecture_cost(course, day, period, new_room, solution)
-
-        elif rnd == 3:  # N3: Lecture swap
-            available_slots = get_available_slots_different_period_room(course, solution, [day, period, room])
-            if available_slots:
-                r_day = random.randint(0, days - 1)
-                r_period = random.randint(0, periods_per_day - 1)
-                r_room = random.randint(0, len(rooms) - 1)
-                room_list = list(rooms.keys())
-                for d in range(days):
-                    for p in range(periods_per_day):
-                        for r in range(len(rooms)):
-                            new_day = (d + r_day) % days
-                            new_period = (p + r_period) % periods_per_day
-                            new_room = room_list[(r + r_room) % len(rooms)]
-                            if [new_day, new_period, new_room] in available_slots:
-                                other_course = solution[new_day][new_period][new_room]
-                                if other_course != course:
-                                    old_cost2 = (
-                                        calculate_individual_lecture_cost(other_course, new_day, new_period, new_room, solution)
-                                        if other_course != -1
-                                        else 0
-                                    )
-                                    solution[day][period][room] = other_course
-                                    solution[new_day][new_period][new_room] = course
-                                    new_cost1 = calculate_individual_lecture_cost(course, new_day, new_period, new_room, solution)
-                                    new_cost2 = calculate_individual_lecture_cost(other_course, day, period, room, solution) if other_course != -1 else 0
-                                    new_cost = new_cost1 + new_cost2 - old_cost2
-                                    break
-                        else:
-                            continue
-                        break
-                    else:
-                        continue
-                    break
-
-        # elif rnd == 4:   #N4 
-        #     select_room = random.choice(list(rooms.keys()))
-        #     for day in solution:
-        #         for period in solution[day]:
-        #             for room in solution[day][period]:
-        #                 if solution[day][period][room] == course:
-        #                     solution[day][period][room] = solution[day][period][select_room]
-        #                     solution[day][period][select_room] = course
-                            
-        # elif rnd == 5 : #N5
-        #     violating_courses, violating_courses_assignment = get_courses_with_mwd_violations(solution)
-
-        #     if violating_courses:
-        #         violating_course = random.choice(violating_courses)
-        #         slots = violating_courses_assignment[violating_course]
-
-        #         # Count days where lectures are already scheduled
-        #         day_counts = {}
-        #         for slot in slots:
-        #             d = slot[0]
-        #             day_counts[d] = day_counts.get(d, 0) + 1
-
-        #         duplicate_days = [d for d, count in day_counts.items() if count > 1]
-        #         used_days = set(day_counts.keys())
-        #         all_days = set(range(days))
-        #         free_days = list(all_days - used_days)
-
-        #         if duplicate_days and free_days:
-        #             # Pick one lecture from a duplicated day
-        #             candidates = [s for s in slots if s[0] in duplicate_days]
-        #             orig_slot = random.choice(candidates)
-        #             orig_day, orig_period, orig_room = orig_slot
-
-        #             # Get all conflict-free available slots
-        #             available_slots = get_available_slots(violating_course, solution, orig_slot)
-
-        #             # Filter: must be on a free day AND same period
-        #             valid_slots = [
-        #                 s for s in available_slots
-        #                 if s[0] in free_days and s[1] == orig_period and (s[2] == orig_room or rooms[s[2]] >= courses[violating_course]['students'])
-        #             ]
-
-        #             if valid_slots:
-        #                 # Prefer same room, fallback to any valid room
-        #                 same_room_slots = [s for s in valid_slots if s[2] == orig_room]
-        #                 slot = random.choice(same_room_slots if same_room_slots else valid_slots)
-
-        #                 # Reassign
-        #                 solution[orig_day][orig_period][orig_room] = -1
-        #                 solution[slot[0]][slot[1]][slot[2]] = violating_course
-        #                 n5 = True
-
-        #                 #print(f"Course {course} is assigned from {orig_day}, {orig_period}, {orig_room} to {slot[0]}, {slot[1]}, {slot[2]}")
-                    
-        # elif rnd == 6: #N6 copy the move in 6
-        #     curriculum = random.choice(list(curricula))
-        #     violating_lectures = []
-        #     for day in solution:
-        #         for period in solution[day]:
-        #             for room in solution[day][period]:
-        #                 course = solution[day][period][room]
-        #                 if course in curricula[curriculum]:
-        #                     hasUpper = False
-        #                     hasLower = False
-        #                     if period<(periods_per_day-1) and solution[day][period+1]:
-        #                         for coursej in solution[day][period+1].values(): 
-        #                             if (coursej in curricula[curriculum]):
-        #                                 hasUpper = True
-        #                                 break
-        #                     if not hasUpper and period>0 and solution[day][period-1]:
-        #                         for coursej in solution[day][period-1].values(): 
-        #                             if (coursej in curricula[curriculum]):
-        #                                 hasLower = True
-        #                                 break
-        #                     if (not hasUpper) and (not hasLower): 
-        #                         violating_lectures.append((course, day, period, room))
-        #     if  violating_lectures:
-        #         lecture = random.choice(violating_lectures)
-        #         course = lecture[0]
-        #         available_period = []
-        #         for day in solution:
-        #             for period in solution[day]:
-        #                 hasConflict = False
-        #                 for target_course in get_assigned_courses_by_period(day, period, solution):
-        #                     if has_conflict(course, target_course, solution):
-        #                         hasConflict = True
-        #                         break
-        #                 if  (not(course in unavailability_constraints and (day, period) in unavailability_constraints[course])) and not hasConflict:
-        #                     if period<(periods_per_day-1) and solution[day][period+1]:
-        #                         for coursej in solution[day][period+1].values(): 
-        #                             if (coursej in curricula[curriculum]):
-        #                                 if solution[day][period][lecture[3]] == -1:
-        #                                     available_period.append((day, period, lecture[3]))
-        #                                 else:
-        #                                     for r in solution[day][period]:
-        #                                         if solution[day][period] == -1 and rooms[r] >= courses[course]['students']:
-        #                                             available_period.append((day, period, r))
-        #                                 break
-        #                     if not hasUpper and period>0 and solution[day][period-1]:
-        #                         for coursej in solution[day][period-1].values(): 
-        #                             if (coursej in curricula[curriculum]):
-        #                                 if solution[day][period][lecture[3]] == -1:
-        #                                     available_period.append((day, period, lecture[3]))
-        #                                 else:
-        #                                     for r in solution[day][period]:
-        #                                         if solution[day][period] == -1 and rooms[r] >= courses[course]['students']:
-        #                                             available_period.append((day, period, r))
-        #                                 break
-        #         if available_period:
-        #             #print(course, available_period)
-        #             slot = random.choice(available_period)
-        #             solution[lecture[1]][lecture[2]][lecture[3]] = -1
-        #             solution[slot[0]][slot[1]][lecture[3]] = lecture[0]
+        if type == 1: personal_fitness = self.fitness_set[bee]
+        else: personal_fitness = self.fitness_set[source]
         
-        delta = new_cost - old_cost
-
-        # Apply if move improved or equal cost
-        if delta <= 0:
-            if delta < 0:
-                self.stagnation[index] = 0
-            if type == 1:
-                self.fitness_set[index] = self.evaluate_fitness(solution)
+        if type == 1:
+            if (new_fitness <= personal_fitness):
+                if (new_fitness < personal_fitness):
+                    self.stagnation[index] = 0 #Reset
+                self.fitness_set[index] = new_fitness
                 self.solution_set[index] = solution
-            else:
+            if self.fitness_set[bee] <= self.best_fitness:
+                self.best_fitness = self.fitness_set[bee]
+                self.global_best_solution = solution
+                
+        else:
+            if (new_fitness <= personal_fitness):
+                if (new_fitness < personal_fitness):
+                    self.stagnation[index] = 0 #Reset
                 self.onlooker_bee[bee] = solution
-
-        return delta
+                #if n5: print("Done N5")
+        moves += 1
+        return new_fitness
 
     def run_cycle(self):
         """Run a full ABC cycle."""
@@ -807,11 +601,11 @@ class ABCSwarm:
         
         self.stagnate()
 
-        self.global_best_solution = self.get_best_solution()
+        return moves
 
     def get_fitness(self):
         """Return the best fitness of the swarm."""
-        return self.evaluate_fitness(self.global_best_solution)
+        return self.best_fitness
 
 class MultiSwarmABC:
     """Manages multiple ABC swarms running in parallel with exclusion and anti-convergence mechanisms."""
@@ -821,7 +615,7 @@ class MultiSwarmABC:
         self.max_iterations = max_iterations
         self.target_fitness = 0 
         self.rcloud = rcloud
-        self.swarms = [ABCSwarm(population_size, limit, num_swarms) for _ in range(num_swarms)]
+        self.swarms = [ABCSwarm(population_size, limit) for _ in range(num_swarms)]
         self.global_best_solution = None
         self.global_best_fitness = float("inf")
 
@@ -992,7 +786,7 @@ class MultiSwarmABC:
             # 🔹 If all solutions in the swarm have converged → Tag swarm for reinitialization
             if all_converged:
                 for i, swarm in enumerate(self.swarms):
-                    fitness = swarm.evaluate_fitness(swarm.get_best_solution())
+                    fitness = swarm.get_fitness()
                     if fitness > worst_fitness:
                         worst_swarm = swarm
                         worst_fitness = fitness
@@ -1031,14 +825,14 @@ class MultiSwarmABC:
             print(f"Iteration {cycle+1}: Global Best Fitness: {self.global_best_fitness}")
 
             # ✅ **Step 5: Check Stopping Condition**
-            if self.global_best_fitness <= self.target_fitness or time.time() - start_time >= TIME:
+            if self.global_best_fitness <= self.target_fitness or time.time() - start_time >= TIME or moves > 2000000:
                 print(f"Stopping early, reached target fitness: {self.global_best_fitness}")
                 break
 
             for swarm in self.swarms:
                 best = swarm.global_best_solution
-                print(str(swarm.fitness_set) + " " + str(swarm.evaluate_fitness(best)))
-            
+                print(str(swarm.fitness_set) + " " + str(swarm.get_fitness()))
+        print(moves)
         return self.global_best_solution, self.global_best_fitness
     
     def get_fitness_per_swarm(self):
